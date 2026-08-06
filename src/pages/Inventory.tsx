@@ -1,8 +1,57 @@
+import { useState } from "react";
+
 import InventoryTable from "../components/inventory/InventoryTable";
+import Input from "../components/ui/Input";
+import Select from "../components/ui/Select";
+
 import { useInventory } from "../hooks/useInventory";
 
 export default function Inventory() {
   const { inventory } = useInventory();
+
+  const [search, setSearch] =
+    useState("");
+
+  const [filter, setFilter] =
+    useState("ALL");
+
+  const filteredInventory =
+    inventory
+      .filter((product) => {
+        const keyword =
+          search.toLowerCase();
+
+        return (
+          product.name
+            .toLowerCase()
+            .includes(keyword) ||
+          product.code
+            .toLowerCase()
+            .includes(keyword)
+        );
+      })
+      .filter((product) => {
+        switch (filter) {
+          case "AVAILABLE":
+            return (
+              product.stock >
+              product.minimumStock
+            );
+
+          case "LOW":
+            return (
+              product.stock > 0 &&
+              product.stock <=
+                product.minimumStock
+            );
+
+          case "OUT":
+            return product.stock === 0;
+
+          default:
+            return true;
+        }
+      });
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100">
@@ -26,8 +75,54 @@ export default function Inventory() {
           </div>
         </div>
 
-        <div className="rounded-2xl bg-white border border-slate-200 shadow-sm p-4 sm:p-6">
-          <InventoryTable products={inventory} />
+        <div className="rounded-2xl bg-white border border-slate-200 shadow-sm p-4 sm:p-6 space-y-4">
+
+          <div className="flex flex-col gap-4 md:flex-row">
+
+            <div className="flex-1">
+              <Input
+                type="text"
+                placeholder="Search inventory..."
+                value={search}
+                onChange={(e) =>
+                  setSearch(e.target.value)
+                }
+              />
+            </div>
+
+            <div className="w-full md:w-64">
+              <Select
+                value={filter}
+                onChange={(e) =>
+                  setFilter(e.target.value)
+                }
+                options={[
+                  {
+                    label: "All",
+                    value: "ALL",
+                  },
+                  {
+                    label: "In Stock",
+                    value: "AVAILABLE",
+                  },
+                  {
+                    label: "Low Stock",
+                    value: "LOW",
+                  },
+                  {
+                    label: "Out of Stock",
+                    value: "OUT",
+                  },
+                ]}
+              />
+            </div>
+
+          </div>
+
+          <InventoryTable
+            products={filteredInventory}
+          />
+
         </div>
 
       </div>

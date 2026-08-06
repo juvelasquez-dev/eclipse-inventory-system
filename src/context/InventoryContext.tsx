@@ -1,6 +1,7 @@
 import {
   createContext,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
@@ -15,6 +16,13 @@ import type {
 } from "../types/inventory";
 
 import { getInventory } from "../utils/inventory";
+
+import {
+  loadProducts,
+  loadTransactions,
+  saveProducts,
+  saveTransactions,
+} from "../utils/storage";
 
 interface InventoryContextType {
   products: Product[];
@@ -46,10 +54,20 @@ export function InventoryProvider({
   children,
 }: Props) {
   const [products, setProducts] =
-    useState(initialProducts);
+    useState<Product[]>(() => {
+      return (
+        loadProducts() ??
+        initialProducts
+      );
+    });
 
   const [transactions, setTransactions] =
-    useState(initialTransactions);
+    useState<Transaction[]>(() => {
+      return (
+        loadTransactions() ??
+        initialTransactions
+      );
+    });
 
   const inventory = useMemo(
     () =>
@@ -59,6 +77,14 @@ export function InventoryProvider({
       ),
     [products, transactions]
   );
+
+  useEffect(() => {
+    saveProducts(products);
+  }, [products]);
+
+  useEffect(() => {
+    saveTransactions(transactions);
+  }, [transactions]);
 
   function addProduct(product: Product) {
     setProducts((prev) => [

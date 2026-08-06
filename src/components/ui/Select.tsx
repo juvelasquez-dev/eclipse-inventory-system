@@ -7,7 +7,7 @@ interface Option {
 
 interface SelectProps
   extends SelectHTMLAttributes<HTMLSelectElement> {
-  label: string;
+  label?: string;
   options: Option[];
 }
 
@@ -15,21 +15,24 @@ export default function Select({
   label,
   id,
   options,
+  className = "",
   ...props
 }: SelectProps) {
   return (
     <div className="space-y-1.5">
-      <label
-        htmlFor={id}
-        className="block text-sm font-medium text-slate-700"
-      >
-        {label}
-      </label>
+      {label && (
+        <label
+          htmlFor={id}
+          className="block text-sm font-medium text-slate-700"
+        >
+          {label}
+        </label>
+      )}
 
       <select
         id={id}
         {...props}
-        className="
+        className={`
           w-full
           appearance-none
           rounded-lg
@@ -57,7 +60,8 @@ export default function Select({
           disabled:bg-slate-50
           disabled:text-slate-400
           disabled:hover:border-slate-300
-        "
+          ${className}
+        `}
       >
         {options.map((option) => (
           <option

@@ -4,9 +4,10 @@ import ProductForm, {
   type ProductFormData,
 } from "../components/inventory/ProductForm";
 import ProductTable from "../components/inventory/ProductTable";
-
+import { useToast } from "../context/ToastContext";
 import Button from "../components/ui/Button";
 import Modal from "../components/ui/Modal";
+import ConfirmModal from "../components/ui/ConfirmModal";
 
 import { useInventory } from "../hooks/useInventory";
 
@@ -14,8 +15,15 @@ import type { Product } from "../types/inventory";
 
 export default function Products() {
   const [open, setOpen] = useState(false);
+
   const [editingProduct, setEditingProduct] =
     useState<Product | null>(null);
+
+  const [deletingProduct, setDeletingProduct] =
+    useState<Product | null>(null);
+
+  const [search, setSearch] =
+    useState("");
 
   const {
     products,
@@ -23,49 +31,73 @@ export default function Products() {
     updateProduct,
     deleteProduct,
   } = useInventory();
+const { showToast } = useToast();
+
+  const filteredProducts =
+    products.filter((product) => {
+      const keyword =
+        search.toLowerCase();
+
+      return (
+        product.name
+          .toLowerCase()
+          .includes(keyword) ||
+        product.code
+          .toLowerCase()
+          .includes(keyword)
+      );
+    });
 
   function handleSubmit(
-    data: ProductFormData
-  ) {
-    if (editingProduct) {
-      updateProduct({
-        ...editingProduct,
-        ...data,
-      });
-    } else {
-      addProduct({
-        id: crypto.randomUUID(),
-        ...data,
-      });
-    }
+  data: ProductFormData
+) {
+  if (editingProduct) {
+    updateProduct({
+      ...editingProduct,
+      ...data,
+    });
 
-    setEditingProduct(null);
-    setOpen(false);
+    showToast("Product updated successfully.");
+  } else {
+    addProduct({
+      id: crypto.randomUUID(),
+      ...data,
+    });
+
+    showToast("Product added successfully.");
   }
 
-  function handleAddProduct() {
-    setEditingProduct(null);
-    setOpen(true);
-  }
+  setEditingProduct(null);
+  setOpen(false);
+}
 
-  function handleEditProduct(
-    product: Product
-  ) {
-    setEditingProduct(product);
-    setOpen(true);
-  }
+function handleAddProduct() {
+  setEditingProduct(null);
+  setOpen(true);
+}
 
-  function handleDeleteProduct(
-    product: Product
-  ) {
-    const confirmed = window.confirm(
-      `Delete "${product.name}"?`
-    );
+function handleEditProduct(
+  product: Product
+) {
+  setEditingProduct(product);
+  setOpen(true);
+}
 
-    if (!confirmed) return;
+function handleDeleteProduct(
+  product: Product
+) {
+  setDeletingProduct(product);
+}
 
-    deleteProduct(product.id);
-  }
+function confirmDeleteProduct() {
+  if (!deletingProduct) return;
+
+  deleteProduct(deletingProduct.id);
+
+  showToast("Product deleted successfully.");
+
+  setDeletingProduct(null);
+}
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100">
@@ -95,12 +127,24 @@ export default function Products() {
           </div>
         </div>
 
-        <div className="rounded-2xl bg-white border border-slate-200 shadow-sm p-4 sm:p-6">
+        <div className="rounded-2xl bg-white border border-slate-200 shadow-sm p-4 sm:p-6 space-y-4">
+
+          <input
+            type="text"
+            placeholder="Search by product name or code..."
+            value={search}
+            onChange={(e) =>
+              setSearch(e.target.value)
+            }
+            className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-200"
+          />
+
           <ProductTable
-            products={products}
+            products={filteredProducts}
             onEdit={handleEditProduct}
             onDelete={handleDeleteProduct}
           />
+
         </div>
 
         <Modal
@@ -122,6 +166,22 @@ export default function Products() {
             onSubmit={handleSubmit}
           />
         </Modal>
+
+        <ConfirmModal
+          open={!!deletingProduct}
+          title="Delete Product"
+          message={
+            deletingProduct
+              ? `Are you sure you want to delete "${deletingProduct.name}"? This action cannot be undone.`
+              : ""
+          }
+          confirmText="Delete"
+          cancelText="Cancel"
+          onConfirm={confirmDeleteProduct}
+          onCancel={() =>
+            setDeletingProduct(null)
+          }
+        />
 
       </div>
     </div>
