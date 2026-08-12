@@ -26,6 +26,7 @@ import {
 
 interface InventoryContextType {
   products: Product[];
+
   transactions: Transaction[];
 
   inventory: (Product & {
@@ -33,8 +34,14 @@ interface InventoryContextType {
   })[];
 
   addProduct: (product: Product) => void;
-  updateProduct: (product: Product) => void;
-  deleteProduct: (id: string) => void;
+
+  updateProduct: (
+    product: Product
+  ) => void;
+
+  deleteProduct: (
+    id: string
+  ) => boolean;
 
   addTransaction: (
     transaction: Transaction
@@ -69,6 +76,10 @@ export function InventoryProvider({
       );
     });
 
+  /*
+   * Calculate inventory from products
+   * and their transactions.
+   */
   const inventory = useMemo(
     () =>
       getInventory(
@@ -78,41 +89,81 @@ export function InventoryProvider({
     [products, transactions]
   );
 
+  /*
+   * Save products whenever they change.
+   */
   useEffect(() => {
     saveProducts(products);
   }, [products]);
 
+  /*
+   * Save transactions whenever they change.
+   */
   useEffect(() => {
     saveTransactions(transactions);
   }, [transactions]);
 
-  function addProduct(product: Product) {
+  /*
+   * Add a new product.
+   */
+  function addProduct(
+    product: Product
+  ) {
     setProducts((prev) => [
       ...prev,
       product,
     ]);
   }
 
+  /*
+   * Update an existing product.
+   */
   function updateProduct(
     updatedProduct: Product
   ) {
     setProducts((prev) =>
       prev.map((product) =>
-        product.id === updatedProduct.id
+        product.id ===
+        updatedProduct.id
           ? updatedProduct
           : product
       )
     );
   }
 
-  function deleteProduct(id: string) {
+  /*
+   * Delete a product.
+   *
+   * Products with transaction history
+   * cannot be deleted because their
+   * transactions need to remain intact.
+   */
+  function deleteProduct(
+    id: string
+  ): boolean {
+    const hasTransactions =
+      transactions.some(
+        (transaction) =>
+          transaction.productId === id
+      );
+
+    if (hasTransactions) {
+      return false;
+    }
+
     setProducts((prev) =>
       prev.filter(
-        (product) => product.id !== id
+        (product) =>
+          product.id !== id
       )
     );
+
+    return true;
   }
 
+  /*
+   * Add a stock transaction.
+   */
   function addTransaction(
     transaction: Transaction
   ) {

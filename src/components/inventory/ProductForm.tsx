@@ -2,8 +2,31 @@ import { useState } from "react";
 
 import Button from "../ui/Button";
 import Input from "../ui/Input";
+import Select from "../ui/Select";
+
+import { categories } from "../../mock/categories";
+import { flavorsByCategory } from "../../mock/flavors";
+import { generateProductCode } from "../../utils/productCode";
 
 import type { Product } from "../../types/inventory";
+
+const categoryUnits: Record<string, string> = {
+  "3.6 Liters": "Tub",
+  "Half Gallon": "Tub",
+  "1.7 Liters": "Tub",
+  "1 Liter": "Tub",
+  Pint: "Tub",
+
+  "Big Cup": "Bag",
+  "Medium Cup": "Bag",
+  "Small Cup": "Bag",
+
+  "Ice Cream in Cone": "Box",
+
+  "Special Sticks": "Bag",
+  "Ice Buko": "Bag",
+  "Ice Lolly": "Bag",
+};
 
 export interface ProductFormData {
   code: string;
@@ -22,38 +45,84 @@ export default function ProductForm({
   initialValues,
   onSubmit,
 }: ProductFormProps) {
-  const [code, setCode] = useState(initialValues?.code ?? "");
-  const [name, setName] = useState(initialValues?.name ?? "");
-  const [category, setCategory] = useState(initialValues?.category ?? "");
-  const [unit, setUnit] = useState(initialValues?.unit ?? "");
+  const [category, setCategory] = useState(
+    initialValues?.category ?? ""
+  );
+
+  const [flavor, setFlavor] = useState(() => {
+    if (!initialValues?.name) {
+      return "";
+    }
+
+    const categoryName = initialValues.category;
+    const suffix = ` ${categoryName}`;
+
+    if (initialValues.name.endsWith(suffix)) {
+      return initialValues.name.slice(
+        0,
+        -suffix.length
+      );
+    }
+
+    return initialValues.name;
+  });
+
   const [minimumStock, setMinimumStock] = useState(
     initialValues?.minimumStock ?? 0
   );
 
   const [error, setError] = useState("");
 
+  const unit = categoryUnits[category] ?? "";
+
+  const availableFlavors =
+    flavorsByCategory[
+      category as keyof typeof flavorsByCategory
+    ] ?? [];
+
+  const productName =
+    flavor && category
+      ? `${flavor} ${category}`
+      : "";
+
+  const generatedCode =
+    category && flavor
+      ? generateProductCode(category, flavor)
+      : "";
+
+  function handleCategoryChange(value: string) {
+    setCategory(value);
+    setFlavor("");
+    setError("");
+  }
+
+  function handleFlavorChange(value: string) {
+    setFlavor(value);
+    setError("");
+  }
+
   function handleSubmit(
     e: React.FormEvent<HTMLFormElement>
   ) {
     e.preventDefault();
 
-    if (!code.trim()) {
-      setError("Product code is required.");
-      return;
-    }
-
-    if (!name.trim()) {
-      setError("Product name is required.");
-      return;
-    }
-
-    if (!category.trim()) {
+    if (!category) {
       setError("Category is required.");
       return;
     }
 
-    if (!unit.trim()) {
-      setError("Unit is required.");
+    if (!flavor) {
+      setError("Flavor is required.");
+      return;
+    }
+
+    if (!unit) {
+      setError("Unit could not be determined.");
+      return;
+    }
+
+    if (!generatedCode) {
+      setError("Product code could not be generated.");
       return;
     }
 
@@ -67,8 +136,8 @@ export default function ProductForm({
     setError("");
 
     onSubmit({
-      code,
-      name,
+      code: generatedCode,
+      name: productName,
       category,
       unit,
       minimumStock,
@@ -81,53 +150,86 @@ export default function ProductForm({
       className="space-y-5"
     >
       {error && (
-        <div className="flex items-start gap-2.5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          <svg
-            className="mt-0.5 h-4 w-4 flex-shrink-0"
-            viewBox="0 0 20 20"
-            fill="currentColor"
-          >
-            <path
-              fillRule="evenodd"
-              d="M18 10A8 8 0 11 2 10a8 8 0 0116 0zM9 9a1 1 0 011-1h.01a1 1 0 110 2H10a1 1 0 01-1-1zm0 3a1 1 0 011-1h.01a1 1 0 110 2H10a1 1 0 01-1-1z"
-              clipRule="evenodd"
-            />
-          </svg>
-          <span>{error}</span>
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
         </div>
       )}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Input
-          label="Product Code"
-          value={code}
-          onChange={(e) => setCode(e.target.value)}
-        />
-
-        <Input
-          label="Product Name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-        />
-
-        <Input
+        <Select
           label="Category"
           value={category}
-          onChange={(e) => setCategory(e.target.value)}
+          onChange={(e) =>
+            handleCategoryChange(
+              e.target.value
+            )
+          }
+          options={[
+            {
+              label: "Select Category",
+              value: "",
+            },
+            ...categories.map((category) => ({
+              label: category,
+              value: category,
+            })),
+          ]}
+        />
+
+        <Select
+          label="Flavor"
+          value={flavor}
+          onChange={(e) =>
+            handleFlavorChange(
+              e.target.value
+            )
+          }
+          disabled={!category}
+          options={[
+            {
+              label: category
+                ? "Select Flavor"
+                : "Select Category First",
+              value: "",
+            },
+            ...availableFlavors.map((flavor) => ({
+              label: flavor,
+              value: flavor,
+            })),
+          ]}
+        />
+
+        <Input
+          label="Product Code"
+          value={generatedCode}
+          disabled
+          placeholder="Generated automatically"
         />
 
         <Input
           label="Unit"
           value={unit}
-          onChange={(e) => setUnit(e.target.value)}
+          disabled
         />
+
+        <div className="sm:col-span-2">
+          <Input
+            label="Product Name"
+            value={productName}
+            disabled
+            placeholder="Generated automatically"
+          />
+        </div>
 
         <Input
           label="Minimum Stock"
           type="number"
+          min={0}
           value={minimumStock}
           onChange={(e) =>
-            setMinimumStock(Number(e.target.value))
+            setMinimumStock(
+              Number(e.target.value)
+            )
           }
         />
       </div>
@@ -140,3 +242,4 @@ export default function ProductForm({
     </form>
   );
 }
+

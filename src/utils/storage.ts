@@ -6,12 +6,44 @@ import type {
 const PRODUCTS_KEY = "inventory-products";
 const TRANSACTIONS_KEY = "inventory-transactions";
 
+const PRODUCT_CATALOG_VERSION = "2";
+
 export function loadProducts(): Product[] | null {
-  const data = localStorage.getItem(PRODUCTS_KEY);
+  const versionKey =
+    "inventory-product-catalog-version";
 
-  if (!data) return null;
+  const currentVersion =
+    localStorage.getItem(versionKey);
 
-  return JSON.parse(data);
+  // Reset the old product catalog when
+  // the catalog version changes.
+  if (
+    currentVersion !==
+    PRODUCT_CATALOG_VERSION
+  ) {
+    localStorage.removeItem(PRODUCTS_KEY);
+
+    localStorage.setItem(
+      versionKey,
+      PRODUCT_CATALOG_VERSION
+    );
+
+    return null;
+  }
+
+  const data =
+    localStorage.getItem(PRODUCTS_KEY);
+
+  if (!data) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(data) as Product[];
+  } catch {
+    localStorage.removeItem(PRODUCTS_KEY);
+    return null;
+  }
 }
 
 export function saveProducts(
@@ -26,13 +58,24 @@ export function saveProducts(
 export function loadTransactions():
   | Transaction[]
   | null {
-  const data = localStorage.getItem(
-    TRANSACTIONS_KEY
-  );
+  const data =
+    localStorage.getItem(
+      TRANSACTIONS_KEY
+    );
 
-  if (!data) return null;
+  if (!data) {
+    return null;
+  }
 
-  return JSON.parse(data);
+  try {
+    return JSON.parse(data) as Transaction[];
+  } catch {
+    localStorage.removeItem(
+      TRANSACTIONS_KEY
+    );
+
+    return null;
+  }
 }
 
 export function saveTransactions(

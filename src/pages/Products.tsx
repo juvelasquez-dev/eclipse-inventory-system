@@ -92,9 +92,22 @@ function handleDeleteProduct(
 function confirmDeleteProduct() {
   if (!deletingProduct) return;
 
-  deleteProduct(deletingProduct.id);
+  const deleted = deleteProduct(
+    deletingProduct.id
+  );
 
-  showToast("Product deleted successfully.");
+  if (!deleted) {
+    showToast(
+      "This product cannot be deleted because it has transaction history."
+    );
+
+    setDeletingProduct(null);
+    return;
+  }
+
+  showToast(
+    "Product deleted successfully."
+  );
 
   setDeletingProduct(null);
 }

@@ -1,6 +1,3 @@
-import Card from "../components/ui/Card";
-import StockTable from "../components/inventory/StockTable";
-
 import { useInventory } from "../hooks/useInventory";
 
 export default function Dashboard() {
@@ -9,22 +6,29 @@ export default function Dashboard() {
     totalStock,
     stockInToday,
     stockOutToday,
-    products,
-    transactions,
+    inventory,
   } = useInventory();
 
-  const recentTransactions = [...transactions]
-    .slice(-5)
-    .reverse();
+
+  const lowStockProducts =
+    inventory.filter(
+      (product) =>
+        product.stock <= product.minimumStock
+    );
+
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100">
+
       <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8 space-y-8">
 
-        <div className="relative overflow-hidden rounded-2xl bg-white border border-slate-200 shadow-sm px-6 py-8 sm:px-8">
+
+        <div className="relative overflow-hidden rounded-2xl bg-white border border-slate-200 shadow-sm px-6 py-8">
+
           <div className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-gradient-to-br from-blue-100 to-indigo-100 opacity-60 blur-2xl" />
 
           <div className="relative">
+
             <span className="inline-flex items-center rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 ring-1 ring-inset ring-blue-200">
               Overview
             </span>
@@ -33,62 +37,146 @@ export default function Dashboard() {
               Dashboard
             </h1>
 
-            <p className="mt-2 max-w-xl text-sm text-slate-500">
-              Inventory overview
+            <p className="mt-2 text-sm text-slate-500">
+              Monitor your inventory activity.
             </p>
+
           </div>
+
         </div>
+
+
 
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
 
-          <Card
+
+          <SummaryCard
             title="Total Products"
             value={totalProducts}
-            description="Registered items"
           />
 
-          <Card
-            title="Available Stock"
+
+          <SummaryCard
+            title="Total Stock"
             value={totalStock}
-            description="Current inventory"
           />
 
-          <Card
+
+          <SummaryCard
             title="Stock In Today"
             value={stockInToday}
-            description="Incoming items"
           />
 
-          <Card
+
+          <SummaryCard
             title="Stock Out Today"
             value={stockOutToday}
-            description="Released items"
           />
 
+
         </div>
 
-        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
 
-          <div className="border-b border-slate-200 px-6 py-5">
+
+        <div className="rounded-2xl bg-white border border-slate-200 shadow-sm p-6">
+
+          <div className="flex items-center justify-between mb-5">
+
             <h2 className="text-lg font-semibold text-slate-900">
-              Recent Transactions
+              Low Stock Alert
             </h2>
 
-            <p className="mt-1 text-sm text-slate-500">
-              Latest inventory activity.
-            </p>
+            <span className="rounded-full bg-red-50 px-3 py-1 text-xs font-semibold text-red-700">
+              {lowStockProducts.length} items
+            </span>
+
           </div>
 
-          <div className="p-6">
-            <StockTable
-              transactions={recentTransactions}
-              products={products}
-            />
-          </div>
+
+
+          {lowStockProducts.length === 0 ? (
+
+            <p className="text-sm text-slate-500">
+              No low stock products.
+            </p>
+
+          ) : (
+
+            <div className="space-y-3">
+
+              {lowStockProducts.map(
+                (product) => (
+
+                  <div
+                    key={product.id}
+                    className="flex items-center justify-between rounded-xl border border-slate-200 px-4 py-3"
+                  >
+
+                    <div>
+
+                      <p className="font-medium text-slate-900">
+                        {product.name}
+                      </p>
+
+                      <p className="text-sm text-slate-500">
+                        {product.code}
+                      </p>
+
+                    </div>
+
+
+                    <div className="text-right">
+
+                      <p className="font-semibold text-red-600">
+                        {product.stock} {product.unit}
+                      </p>
+
+                      <p className="text-xs text-slate-500">
+                        Minimum: {product.minimumStock}
+                      </p>
+
+                    </div>
+
+
+                  </div>
+
+                )
+              )}
+
+            </div>
+
+          )}
 
         </div>
 
+
       </div>
+
+    </div>
+  );
+}
+
+
+
+function SummaryCard({
+  title,
+  value,
+}: {
+  title: string;
+  value: number;
+}) {
+
+  return (
+    <div className="rounded-2xl bg-white border border-slate-200 shadow-sm p-6">
+
+      <p className="text-sm text-slate-500">
+        {title}
+      </p>
+
+      <p className="mt-3 text-3xl font-bold text-slate-900">
+        {value}
+      </p>
+
     </div>
   );
 }
