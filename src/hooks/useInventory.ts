@@ -3,10 +3,8 @@ import { useInventoryContext } from "../context/InventoryContext";
 export function useInventory() {
   const context = useInventoryContext();
 
-
   const totalProducts =
     context.products.length;
-
 
   const totalStock =
     context.inventory.reduce(
@@ -15,42 +13,58 @@ export function useInventory() {
       0
     );
 
-
   const today = new Date()
     .toISOString()
     .split("T")[0];
 
-
   const stockInToday =
-    context.transactions
-      .filter(
-        (transaction) =>
-          transaction.type === "IN" &&
-          transaction.date === today
-      )
-      .reduce(
-        (sum, transaction) =>
-          sum + transaction.quantity,
-        0
-      );
+  context.transactions
+    .filter((transaction) => {
+      if (transaction.type !== "IN") {
+        return false;
+      }
 
+      const transactionDate =
+        new Date(transaction.date)
+          .toISOString()
+          .split("T")[0];
 
-  const stockOutToday =
-    context.transactions
-      .filter(
-        (transaction) =>
-          transaction.type === "OUT" &&
-          transaction.date === today
-      )
-      .reduce(
-        (sum, transaction) =>
-          sum + transaction.quantity,
-        0
-      );
+      return transactionDate === today;
+    })
+    .reduce(
+      (sum, transaction) =>
+        sum + transaction.quantity,
+      0
+    );
 
+const stockOutToday =
+  context.transactions
+    .filter((transaction) => {
+      if (transaction.type !== "OUT") {
+        return false;
+      }
 
+      const transactionDate =
+        new Date(transaction.date)
+          .toISOString()
+          .split("T")[0];
 
-  // Get current stock of a product
+      return transactionDate === today;
+    })
+    .reduce(
+      (sum, transaction) =>
+        sum + transaction.quantity,
+      0
+    );
+
+  /*
+   * Get current stock of a product.
+   *
+   * IN          = add
+   * OUT         = subtract
+   * ADJUSTMENT  = add/subtract based
+   *               on the quantity sign.
+   */
   function getProductStock(
     productId: string
   ) {
@@ -61,21 +75,32 @@ export function useInventory() {
       )
       .reduce(
         (total, transaction) => {
-
           if (transaction.type === "IN") {
-            return total + transaction.quantity;
+            return (
+              total + transaction.quantity
+            );
           }
 
-          return total - transaction.quantity;
+          if (transaction.type === "OUT") {
+            return (
+              total - transaction.quantity
+            );
+          }
 
+          // ADJUSTMENT
+          // Positive = add stock
+          // Negative = remove stock
+          return (
+            total + transaction.quantity
+          );
         },
         0
       );
   }
 
-
-
-  // Products below minimum stock
+  /*
+   * Products below minimum stock.
+   */
   function getLowStockProducts() {
     return context.inventory.filter(
       (product) =>
@@ -84,19 +109,19 @@ export function useInventory() {
     );
   }
 
-
-
-  // Products with zero stock
+  /*
+   * Products with zero stock.
+   */
   function getOutOfStockProducts() {
     return context.inventory.filter(
       (product) =>
-        product.stock === 0
+        product.stock <= 0
     );
   }
 
-
-
-  // Check before Stock Out
+  /*
+   * Check before Stock Out.
+   */
   function hasEnoughStock(
     productId: string,
     quantity: number
@@ -105,8 +130,6 @@ export function useInventory() {
       getProductStock(productId) >= quantity
     );
   }
-
-
 
   return {
     ...context,

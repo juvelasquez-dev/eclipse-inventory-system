@@ -5,6 +5,7 @@ import type {
 
 const PRODUCTS_KEY = "inventory-products";
 const TRANSACTIONS_KEY = "inventory-transactions";
+const CUSTOM_FLAVORS_KEY = "inventory-custom-flavors";
 
 const PRODUCT_CATALOG_VERSION = "2";
 
@@ -84,5 +85,44 @@ export function saveTransactions(
   localStorage.setItem(
     TRANSACTIONS_KEY,
     JSON.stringify(transactions)
+  );
+}
+
+/* -------------------------------- */
+/* Custom Flavor Storage             */
+/* -------------------------------- */
+
+export function loadCustomFlavors(): Record<
+  string,
+  string[]
+> {
+  const data = localStorage.getItem(
+    CUSTOM_FLAVORS_KEY
+  );
+
+  if (!data) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(data) as Record<
+      string,
+      string[]
+    >;
+  } catch {
+    localStorage.removeItem(
+      CUSTOM_FLAVORS_KEY
+    );
+
+    return {};
+  }
+}
+
+export function saveCustomFlavors(
+  flavors: Record<string, string[]>
+) {
+  localStorage.setItem(
+    CUSTOM_FLAVORS_KEY,
+    JSON.stringify(flavors)
   );
 }

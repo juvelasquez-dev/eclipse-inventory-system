@@ -3,7 +3,6 @@ import type {
   Transaction,
 } from "../types/inventory";
 
-
 export function calculateStock(
   productId: string,
   transactions: Transaction[]
@@ -18,10 +17,16 @@ export function calculateStock(
         return total + transaction.quantity;
       }
 
-      return total - transaction.quantity;
+      if (transaction.type === "OUT") {
+        return total - transaction.quantity;
+      }
+
+      // ADJUSTMENT
+      // Positive quantity adds stock.
+      // Negative quantity removes stock.
+      return total + transaction.quantity;
     }, 0);
 }
-
 
 export function getInventory(
   products: Product[],

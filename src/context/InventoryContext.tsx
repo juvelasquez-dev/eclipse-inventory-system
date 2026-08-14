@@ -33,7 +33,7 @@ interface InventoryContextType {
     stock: number;
   })[];
 
-  addProduct: (product: Product) => void;
+  addProduct: (product: Product) => boolean;
 
   updateProduct: (
     product: Product
@@ -45,7 +45,7 @@ interface InventoryContextType {
 
   addTransaction: (
     transaction: Transaction
-  ) => void;
+  ) => boolean;
 }
 
 const InventoryContext =
@@ -105,14 +105,34 @@ export function InventoryProvider({
 
   /*
    * Add a new product.
+   *
+   * A product is considered a duplicate
+   * when another product already has the
+   * same product code.
    */
   function addProduct(
     product: Product
-  ) {
+  ): boolean {
+    const exists = products.some(
+      (existingProduct) =>
+        existingProduct.code
+          .trim()
+          .toLowerCase() ===
+        product.code
+          .trim()
+          .toLowerCase()
+    );
+
+    if (exists) {
+      return false;
+    }
+
     setProducts((prev) => [
       ...prev,
       product,
     ]);
+
+    return true;
   }
 
   /*
@@ -163,14 +183,30 @@ export function InventoryProvider({
 
   /*
    * Add a stock transaction.
+   *
+   * A transaction must reference an
+   * existing product.
    */
   function addTransaction(
     transaction: Transaction
-  ) {
+  ): boolean {
+    const productExists =
+      products.some(
+        (product) =>
+          product.id ===
+          transaction.productId
+      );
+
+    if (!productExists) {
+      return false;
+    }
+
     setTransactions((prev) => [
       ...prev,
       transaction,
     ]);
+
+    return true;
   }
 
   return (

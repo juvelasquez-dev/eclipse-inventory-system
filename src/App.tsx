@@ -13,6 +13,7 @@ import Inventory from "./pages/Inventory";
 import History from "./pages/History";
 import { ToastProvider } from "./context/ToastContext";
 import { InventoryProvider } from "./context/InventoryContext";
+import StockAdjustment from "./pages/StockAdjustment";
 
 function App() {
   return (
@@ -27,6 +28,7 @@ function App() {
               <Route path="/stock-out" element={<StockOut />} />
               <Route path="/inventory" element={<Inventory />} />
               <Route path="/history" element={<History />} />
+              <Route path="/stock-adjustment" element={<StockAdjustment />}/>
             </Route>
           </Routes>
         </BrowserRouter>

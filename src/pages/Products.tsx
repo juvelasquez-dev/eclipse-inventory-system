@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import ProductForm, {
   type ProductFormData,
@@ -8,10 +8,15 @@ import { useToast } from "../context/ToastContext";
 import Button from "../components/ui/Button";
 import Modal from "../components/ui/Modal";
 import ConfirmModal from "../components/ui/ConfirmModal";
+import Input from "../components/ui/Input";
+import Select from "../components/ui/Select";
 
 import { useInventory } from "../hooks/useInventory";
+import { categories } from "../mock/categories";
 
 import type { Product } from "../types/inventory";
+
+const PRODUCTS_PER_PAGE = 10;
 
 export default function Products() {
   const [open, setOpen] = useState(false);
@@ -22,8 +27,13 @@ export default function Products() {
   const [deletingProduct, setDeletingProduct] =
     useState<Product | null>(null);
 
-  const [search, setSearch] =
-    useState("");
+  const [search, setSearch] = useState("");
+
+  const [sizeFilter, setSizeFilter] =
+    useState("ALL");
+
+  const [currentPage, setCurrentPage] =
+    useState(1);
 
   const {
     products,
@@ -31,12 +41,20 @@ export default function Products() {
     updateProduct,
     deleteProduct,
   } = useInventory();
-const { showToast } = useToast();
 
-  const filteredProducts =
-    products.filter((product) => {
+  const { showToast } = useToast();
+
+  /*
+   * Filter products by search and size.
+   */
+  const filteredProducts = products
+    .filter((product) => {
       const keyword =
-        search.toLowerCase();
+        search.toLowerCase().trim();
+
+      if (!keyword) {
+        return true;
+      }
 
       return (
         product.name
@@ -46,80 +64,131 @@ const { showToast } = useToast();
           .toLowerCase()
           .includes(keyword)
       );
+    })
+    .filter((product) => {
+      if (sizeFilter === "ALL") {
+        return true;
+      }
+
+      return product.category === sizeFilter;
     });
 
-  function handleSubmit(
-  data: ProductFormData
-) {
-  if (editingProduct) {
-    updateProduct({
-      ...editingProduct,
-      ...data,
-    });
-
-    showToast("Product updated successfully.");
-  } else {
-    addProduct({
-      id: crypto.randomUUID(),
-      ...data,
-    });
-
-    showToast("Product added successfully.");
-  }
-
-  setEditingProduct(null);
-  setOpen(false);
-}
-
-function handleAddProduct() {
-  setEditingProduct(null);
-  setOpen(true);
-}
-
-function handleEditProduct(
-  product: Product
-) {
-  setEditingProduct(product);
-  setOpen(true);
-}
-
-function handleDeleteProduct(
-  product: Product
-) {
-  setDeletingProduct(product);
-}
-
-function confirmDeleteProduct() {
-  if (!deletingProduct) return;
-
-  const deleted = deleteProduct(
-    deletingProduct.id
+  /*
+   * Pagination calculations.
+   */
+  const totalPages = Math.max(
+    1,
+    Math.ceil(
+      filteredProducts.length /
+        PRODUCTS_PER_PAGE
+    )
   );
 
-  if (!deleted) {
-    showToast(
-      "This product cannot be deleted because it has transaction history."
+  const paginatedProducts =
+    filteredProducts.slice(
+      (currentPage - 1) *
+        PRODUCTS_PER_PAGE,
+      currentPage *
+        PRODUCTS_PER_PAGE
     );
 
-    setDeletingProduct(null);
-    return;
+  /*
+   * Reset to page 1 whenever
+   * search or filter changes.
+   */
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, sizeFilter]);
+
+  /*
+   * If deleting/editing causes the
+   * current page to become invalid,
+   * move back to the last available page.
+   */
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
+  function handleSubmit(
+    data: ProductFormData
+  ) {
+    if (editingProduct) {
+      updateProduct({
+        ...editingProduct,
+        ...data,
+      });
+
+      showToast(
+        "Product updated successfully."
+      );
+    } else {
+      const added = addProduct({
+  id: crypto.randomUUID(),
+  ...data,
+});
+
+if (!added) {
+  showToast("This product already exists.");
+  return;
+}
+
+showToast("Product added successfully.");
+    }
+
+    setEditingProduct(null);
+    setOpen(false);
   }
 
-  showToast(
-    "Product deleted successfully."
-  );
+  function handleAddProduct() {
+    setEditingProduct(null);
+    setOpen(true);
+  }
 
-  setDeletingProduct(null);
-}
+  function handleEditProduct(
+    product: Product
+  ) {
+    setEditingProduct(product);
+    setOpen(true);
+  }
+
+  function handleDeleteProduct(
+    product: Product
+  ) {
+    setDeletingProduct(product);
+  }
+
+  function confirmDeleteProduct() {
+    if (!deletingProduct) return;
+
+    const deleted =
+      deleteProduct(deletingProduct.id);
+
+    if (deleted) {
+      showToast(
+        "Product deleted successfully."
+      );
+    } else {
+      showToast(
+        "This product cannot be deleted because it has transaction history."
+      );
+    }
+
+    setDeletingProduct(null);
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100">
       <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8 space-y-8">
 
+        {/* Header */}
         <div className="relative overflow-hidden rounded-2xl bg-white border border-slate-200 shadow-sm px-6 py-8 sm:px-8">
+
           <div className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-gradient-to-br from-violet-100 to-fuchsia-100 opacity-60 blur-2xl" />
 
           <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+
             <div>
               <span className="inline-flex items-center rounded-full bg-violet-50 px-3 py-1 text-xs font-semibold text-violet-700 ring-1 ring-inset ring-violet-200">
                 Catalog
@@ -134,32 +203,187 @@ function confirmDeleteProduct() {
               </p>
             </div>
 
-            <Button onClick={handleAddProduct}>
+            <Button
+              onClick={handleAddProduct}
+            >
               + Add Product
             </Button>
+
           </div>
         </div>
 
+        {/* Product Content */}
         <div className="rounded-2xl bg-white border border-slate-200 shadow-sm p-4 sm:p-6 space-y-4">
 
-          <input
-            type="text"
-            placeholder="Search by product name or code..."
-            value={search}
-            onChange={(e) =>
-              setSearch(e.target.value)
-            }
-            className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-200"
-          />
+          {/* Filters */}
+          <div className="grid grid-cols-1 items-end gap-4 md:grid-cols-3">
 
-          <ProductTable
-            products={filteredProducts}
-            onEdit={handleEditProduct}
-            onDelete={handleDeleteProduct}
-          />
+            {/* Search */}
+            <div className="md:col-span-2">
+              <Input
+                label=""
+                type="text"
+                placeholder="Search by product name or code..."
+                value={search}
+                onChange={(e) =>
+                  setSearch(e.target.value)
+                }
+              />
+            </div>
+
+            {/* Size */}
+            <div>
+              <Select
+                label="Size"
+                value={sizeFilter}
+                onChange={(e) =>
+                  setSizeFilter(e.target.value)
+                }
+                options={[
+                  {
+                    label: "All Sizes",
+                    value: "ALL",
+                  },
+                  ...categories.map(
+                    (category) => ({
+                      label: category,
+                      value: category,
+                    })
+                  ),
+                ]}
+              />
+            </div>
+
+          </div>
+
+          {/* Results count */}
+          <div className="flex items-center justify-between text-sm text-slate-500">
+            <span>
+              Showing{" "}
+              {filteredProducts.length === 0
+                ? 0
+                : (currentPage - 1) *
+                    PRODUCTS_PER_PAGE +
+                  1}
+              –
+              {Math.min(
+                currentPage *
+                  PRODUCTS_PER_PAGE,
+                filteredProducts.length
+              )}{" "}
+              of {filteredProducts.length} products
+            </span>
+
+            {sizeFilter !== "ALL" && (
+              <span className="font-medium text-violet-600">
+                {sizeFilter}
+              </span>
+            )}
+          </div>
+
+          {/* Table */}
+          {paginatedProducts.length > 0 ? (
+            <ProductTable
+              products={paginatedProducts}
+              onEdit={handleEditProduct}
+              onDelete={handleDeleteProduct}
+            />
+          ) : (
+            <div className="rounded-xl border border-dashed border-slate-300 py-12 text-center">
+
+              <p className="text-sm font-medium text-slate-600">
+                No products found.
+              </p>
+
+              <p className="mt-1 text-xs text-slate-400">
+                Try changing your search or
+                size filter.
+              </p>
+
+            </div>
+          )}
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex flex-col gap-4 border-t border-slate-100 pt-5 sm:flex-row sm:items-center sm:justify-between">
+
+              <p className="text-sm text-slate-500">
+                Page {currentPage} of{" "}
+                {totalPages}
+              </p>
+
+              <div className="flex items-center justify-center gap-2">
+
+                {/* Previous */}
+                <button
+                  type="button"
+                  disabled={
+                    currentPage === 1
+                  }
+                  onClick={() =>
+                    setCurrentPage(
+                      (page) =>
+                        Math.max(
+                          1,
+                          page - 1
+                        )
+                    )
+                  }
+                  className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Previous
+                </button>
+
+                {/* Page numbers */}
+                {Array.from(
+                  { length: totalPages },
+                  (_, index) =>
+                    index + 1
+                ).map((page) => (
+                  <button
+                    key={page}
+                    type="button"
+                    onClick={() =>
+                      setCurrentPage(page)
+                    }
+                    className={
+                      page === currentPage
+                        ? "rounded-lg bg-violet-600 px-3 py-2 text-sm font-semibold text-white"
+                        : "rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
+                    }
+                  >
+                    {page}
+                  </button>
+                ))}
+
+                {/* Next */}
+                <button
+                  type="button"
+                  disabled={
+                    currentPage ===
+                    totalPages
+                  }
+                  onClick={() =>
+                    setCurrentPage(
+                      (page) =>
+                        Math.min(
+                          totalPages,
+                          page + 1
+                        )
+                    )
+                  }
+                  className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Next
+                </button>
+
+              </div>
+            </div>
+          )}
 
         </div>
 
+        {/* Add / Edit Modal */}
         <Modal
           open={open}
           title={
@@ -180,6 +404,7 @@ function confirmDeleteProduct() {
           />
         </Modal>
 
+        {/* Delete Confirmation */}
         <ConfirmModal
           open={!!deletingProduct}
           title="Delete Product"

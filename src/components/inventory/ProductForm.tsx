@@ -8,6 +8,11 @@ import { categories } from "../../mock/categories";
 import { flavorsByCategory } from "../../mock/flavors";
 import { generateProductCode } from "../../utils/productCode";
 
+import {
+  loadCustomFlavors,
+  saveCustomFlavors,
+} from "../../utils/storage";
+
 import type { Product } from "../../types/inventory";
 
 const categoryUnits: Record<string, string> = {
@@ -67,36 +72,77 @@ export default function ProductForm({
     return initialValues.name;
   });
 
-  const [minimumStock, setMinimumStock] = useState(
-    initialValues?.minimumStock ?? 0
-  );
+  const [isNewFlavor, setIsNewFlavor] =
+    useState(false);
+
+  const [minimumStock, setMinimumStock] =
+    useState(
+      initialValues?.minimumStock ?? 0
+    );
+
+  const [customFlavors, setCustomFlavors] =
+    useState<Record<string, string[]>>(() =>
+      loadCustomFlavors()
+    );
 
   const [error, setError] = useState("");
 
   const unit = categoryUnits[category] ?? "";
 
-  const availableFlavors =
+  const defaultFlavors =
     flavorsByCategory[
       category as keyof typeof flavorsByCategory
     ] ?? [];
 
+  const customCategoryFlavors =
+    customFlavors[category] ?? [];
+
+  const availableFlavors = Array.from(
+    new Set([
+      ...defaultFlavors,
+      ...customCategoryFlavors,
+    ])
+  );
+
   const productName =
     flavor && category
-      ? `${flavor} ${category}`
+      ? `${flavor.trim()} ${category}`
       : "";
 
   const generatedCode =
-    category && flavor
-      ? generateProductCode(category, flavor)
+    category && flavor.trim()
+      ? generateProductCode(
+          category,
+          flavor.trim()
+        )
       : "";
 
-  function handleCategoryChange(value: string) {
+  function handleCategoryChange(
+    value: string
+  ) {
     setCategory(value);
     setFlavor("");
+    setIsNewFlavor(false);
     setError("");
   }
 
-  function handleFlavorChange(value: string) {
+  function handleFlavorChange(
+    value: string
+  ) {
+    if (value === "__NEW_FLAVOR__") {
+      setIsNewFlavor(true);
+      setFlavor("");
+    } else {
+      setIsNewFlavor(false);
+      setFlavor(value);
+    }
+
+    setError("");
+  }
+
+  function handleNewFlavorChange(
+    value: string
+  ) {
     setFlavor(value);
     setError("");
   }
@@ -106,23 +152,29 @@ export default function ProductForm({
   ) {
     e.preventDefault();
 
+    const cleanFlavor = flavor.trim();
+
     if (!category) {
       setError("Category is required.");
       return;
     }
 
-    if (!flavor) {
+    if (!cleanFlavor) {
       setError("Flavor is required.");
       return;
     }
 
     if (!unit) {
-      setError("Unit could not be determined.");
+      setError(
+        "Unit could not be determined."
+      );
       return;
     }
 
     if (!generatedCode) {
-      setError("Product code could not be generated.");
+      setError(
+        "Product code could not be generated."
+      );
       return;
     }
 
@@ -133,11 +185,56 @@ export default function ProductForm({
       return;
     }
 
+    /*
+     * If this is a new flavor, save it to
+     * custom flavor storage.
+     *
+     * We don't modify flavors.ts.
+     */
+    if (isNewFlavor) {
+      const existingFlavors =
+        customFlavors[category] ?? [];
+
+      const alreadyExists = Array.from(
+        new Set([
+          ...defaultFlavors,
+          ...existingFlavors,
+        ])
+      ).some(
+        (existingFlavor) =>
+          existingFlavor.toLowerCase() ===
+          cleanFlavor.toLowerCase()
+      );
+
+      if (alreadyExists) {
+        setError(
+          "This flavor already exists for this category."
+        );
+        return;
+      }
+
+      const updatedCustomFlavors = {
+        ...customFlavors,
+        [category]: [
+          ...existingFlavors,
+          cleanFlavor,
+        ],
+      };
+
+      saveCustomFlavors(
+        updatedCustomFlavors
+      );
+
+      setCustomFlavors(
+        updatedCustomFlavors
+      );
+    }
+
     setError("");
 
     onSubmit({
       code: generatedCode,
-      name: productName,
+      name: `${cleanFlavor} ${category}`,
       category,
       unit,
       minimumStock,
@@ -156,6 +253,7 @@ export default function ProductForm({
       )}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        {/* Category */}
         <Select
           label="Category"
           value={category}
@@ -169,36 +267,82 @@ export default function ProductForm({
               label: "Select Category",
               value: "",
             },
-            ...categories.map((category) => ({
-              label: category,
-              value: category,
-            })),
+
+            ...categories.map(
+              (category) => ({
+                label: category,
+                value: category,
+              })
+            ),
           ]}
         />
 
-        <Select
-          label="Flavor"
-          value={flavor}
-          onChange={(e) =>
-            handleFlavorChange(
-              e.target.value
-            )
-          }
-          disabled={!category}
-          options={[
-            {
-              label: category
-                ? "Select Flavor"
-                : "Select Category First",
-              value: "",
-            },
-            ...availableFlavors.map((flavor) => ({
-              label: flavor,
-              value: flavor,
-            })),
-          ]}
-        />
+        {/* Flavor */}
+        {!isNewFlavor ? (
+          <Select
+            label="Flavor"
+            value={flavor}
+            onChange={(e) =>
+              handleFlavorChange(
+                e.target.value
+              )
+            }
+            disabled={!category}
+            options={[
+              {
+                label: category
+                  ? "Select Flavor"
+                  : "Select Category First",
+                value: "",
+              },
 
+              ...availableFlavors.map(
+                (flavor) => ({
+                  label: flavor,
+                  value: flavor,
+                })
+              ),
+
+              ...(category
+                ? [
+                    {
+                      label:
+                        "+ Add New Flavor",
+                      value:
+                        "__NEW_FLAVOR__",
+                    },
+                  ]
+                : []),
+            ]}
+          />
+        ) : (
+          <div>
+            <Input
+              label="New Flavor"
+              value={flavor}
+              onChange={(e) =>
+                handleNewFlavorChange(
+                  e.target.value
+                )
+              }
+              placeholder="e.g. Strawberry Cheesecake"
+            />
+
+            <button
+              type="button"
+              onClick={() => {
+                setIsNewFlavor(false);
+                setFlavor("");
+                setError("");
+              }}
+              className="mt-2 text-xs font-medium text-slate-500 hover:text-slate-700"
+            >
+              ← Choose existing flavor
+            </button>
+          </div>
+        )}
+
+        {/* Product Code */}
         <Input
           label="Product Code"
           value={generatedCode}
@@ -206,12 +350,14 @@ export default function ProductForm({
           placeholder="Generated automatically"
         />
 
+        {/* Unit */}
         <Input
           label="Unit"
           value={unit}
           disabled
         />
 
+        {/* Product Name */}
         <div className="sm:col-span-2">
           <Input
             label="Product Name"
@@ -221,6 +367,7 @@ export default function ProductForm({
           />
         </div>
 
+        {/* Minimum Stock */}
         <Input
           label="Minimum Stock"
           type="number"
@@ -242,4 +389,3 @@ export default function ProductForm({
     </form>
   );
 }
-

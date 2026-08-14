@@ -7,11 +7,15 @@ export interface Product {
   minimumStock: number;
 }
 
+export type TransactionType =
+  | "IN"
+  | "OUT"
+  | "ADJUSTMENT";
 
 export interface Transaction {
   id: string;
   productId: string;
-  type: "IN" | "OUT";
+  type: TransactionType;
   quantity: number;
   date: string;
   remarks?: string;

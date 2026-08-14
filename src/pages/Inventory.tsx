@@ -4,50 +4,103 @@ import InventoryTable from "../components/inventory/InventoryTable";
 import Input from "../components/ui/Input";
 import Select from "../components/ui/Select";
 
+import { categories } from "../mock/categories";
 import { useInventory } from "../hooks/useInventory";
 
 export default function Inventory() {
   const { inventory } = useInventory();
 
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState("ALL");
+  const [sizeFilter, setSizeFilter] = useState("ALL");
+  const [stockFilter, setStockFilter] = useState("ALL");
 
-  const filteredInventory =
-    inventory
-      .filter((product) => {
-        const keyword = search.toLowerCase();
+  const filteredInventory = inventory
+    .filter((product) => {
+      const keyword = search.toLowerCase().trim();
 
-        return (
-          product.name
-            .toLowerCase()
-            .includes(keyword) ||
-          product.code
-            .toLowerCase()
-            .includes(keyword)
-        );
-      })
-      .filter((product) => {
-        switch (filter) {
-          case "AVAILABLE":
-            return (
-              product.stock >
+      if (!keyword) {
+        return true;
+      }
+
+      return (
+        product.name
+          .toLowerCase()
+          .includes(keyword) ||
+        product.code
+          .toLowerCase()
+          .includes(keyword)
+      );
+    })
+    .filter((product) => {
+      if (sizeFilter === "ALL") {
+        return true;
+      }
+
+      return product.category === sizeFilter;
+    })
+    .filter((product) => {
+      switch (stockFilter) {
+        case "AVAILABLE":
+          return (
+            product.stock >
+            product.minimumStock
+          );
+
+        case "LOW":
+          return (
+            product.stock > 0 &&
+            product.stock <=
               product.minimumStock
-            );
+          );
 
-          case "LOW":
-            return (
-              product.stock > 0 &&
-              product.stock <=
-                product.minimumStock
-            );
+        case "OUT":
+          return product.stock === 0;
 
-          case "OUT":
-            return product.stock === 0;
+        default:
+          return true;
+      }
+    });
 
-          default:
-            return true;
-        }
-      });
+  /*
+   * Size summary
+   *
+   * This is intentionally calculated from the
+   * selected size before search and stock filters.
+   *
+   * This means searching for "Chocolate" will
+   * NOT change the total stock for that size.
+   */
+  const sizeInventory =
+    sizeFilter === "ALL"
+      ? inventory
+      : inventory.filter(
+          (product) =>
+            product.category === sizeFilter
+        );
+
+  const totalProducts =
+    sizeInventory.length;
+
+  const totalStock = sizeInventory.reduce(
+  (total, product) =>
+    total + product.stock,
+  0
+);
+
+  const lowStockCount =
+    sizeInventory.filter(
+      (product) =>
+        product.stock > 0 &&
+        product.stock <= product.minimumStock
+    ).length;
+
+  const outOfStockCount =
+    sizeInventory.filter(
+      (product) => product.stock === 0
+    ).length;
+
+  const selectedUnit =
+    sizeInventory[0]?.unit ?? "";
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100">
@@ -73,19 +126,20 @@ export default function Inventory() {
             </p>
 
           </div>
-
         </div>
-
 
         {/* Inventory Content */}
         <div className="rounded-2xl bg-white border border-slate-200 shadow-sm p-4 sm:p-6 space-y-4">
 
-          <div className="flex flex-col gap-4 md:flex-row">
+          {/* Filters */}
+          <div className="grid grid-cols-1 items-end gap-4 md:grid-cols-3">
 
-            <div className="flex-1">
+            {/* Search */}
+            <div className="md:col-span-1">
               <Input
+                label=""
                 type="text"
-                placeholder="Search inventory..."
+                placeholder="Search flavor or code..."
                 value={search}
                 onChange={(e) =>
                   setSearch(e.target.value)
@@ -93,13 +147,36 @@ export default function Inventory() {
               />
             </div>
 
-
-            <div className="w-full md:w-64">
-
+            {/* Size Filter */}
+            <div>
               <Select
-                value={filter}
+                label="Size"
+                value={sizeFilter}
                 onChange={(e) =>
-                  setFilter(e.target.value)
+                  setSizeFilter(e.target.value)
+                }
+                options={[
+                  {
+                    label: "All Sizes",
+                    value: "ALL",
+                  },
+                  ...categories.map(
+                    (category) => ({
+                      label: category,
+                      value: category,
+                    })
+                  ),
+                ]}
+              />
+            </div>
+
+            {/* Stock Filter */}
+            <div>
+              <Select
+                label="Stock Status"
+                value={stockFilter}
+                onChange={(e) =>
+                  setStockFilter(e.target.value)
                 }
                 options={[
                   {
@@ -120,12 +197,89 @@ export default function Inventory() {
                   },
                 ]}
               />
-
             </div>
 
           </div>
 
+          {/* Size Summary */}
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-5">
 
+            <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+
+              {/* Selected Size */}
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  {sizeFilter === "ALL"
+                    ? "All Sizes"
+                    : sizeFilter}
+                </p>
+
+                <p className="mt-1 text-sm text-slate-500">
+                  Inventory summary
+                </p>
+              </div>
+
+              {/* Summary Values */}
+              <div className="grid grid-cols-2 gap-x-8 gap-y-4 sm:grid-cols-4">
+
+                {/* Products */}
+                <div>
+                  <p className="text-xs text-slate-500">
+                    Products
+                  </p>
+
+                  <p className="mt-1 text-xl font-bold text-slate-900">
+                    {totalProducts}
+                  </p>
+                </div>
+
+                {/* Total Stock */}
+                <div>
+                  <p className="text-xs text-slate-500">
+                    Total Stock
+                  </p>
+
+                  <p className="mt-1 text-xl font-bold text-slate-900">
+                    {totalStock === null
+                      ? "—"
+                      : totalStock}
+
+                    {totalStock !== null &&
+                      selectedUnit && (
+                        <span className="ml-1 text-sm font-medium text-slate-500">
+                          {selectedUnit}
+                        </span>
+                      )}
+                  </p>
+                </div>
+
+                {/* Low Stock */}
+                <div>
+                  <p className="text-xs text-slate-500">
+                    Low Stock
+                  </p>
+
+                  <p className="mt-1 text-xl font-bold text-amber-600">
+                    {lowStockCount}
+                  </p>
+                </div>
+
+                {/* Out of Stock */}
+                <div>
+                  <p className="text-xs text-slate-500">
+                    Out of Stock
+                  </p>
+
+                  <p className="mt-1 text-xl font-bold text-red-600">
+                    {outOfStockCount}
+                  </p>
+                </div>
+
+              </div>
+            </div>
+          </div>
+
+          {/* Results */}
           {filteredInventory.length > 0 ? (
             <InventoryTable
               products={filteredInventory}
@@ -138,7 +292,7 @@ export default function Inventory() {
               </p>
 
               <p className="mt-1 text-xs text-slate-400">
-                Try changing your search or filter.
+                Try changing your search or filters.
               </p>
 
             </div>

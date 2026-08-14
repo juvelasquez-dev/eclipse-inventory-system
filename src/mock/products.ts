@@ -41,6 +41,7 @@ const flavorCodes: Record<string, string> = {
   Apple: "APP",
   Avocara: "AVO",
   Buko: "BUK",
+
   "Buko Melon": "BM",
   "Buko Pandan": "BP",
   "Buko Strawberry": "BS",
@@ -83,9 +84,7 @@ const flavorCodes: Record<string, string> = {
 
   "Rocky Road": "RR",
 
-  "Special Stick": "SS",
-
-  "Strawberry": "STR",
+  Strawberry: "STR",
   "Super Strawberry": "SSB",
 
   Tropix: "TRP",
@@ -159,14 +158,19 @@ function generateProducts(): Product[] {
       flavors.map((flavor) => {
         const product: Product = {
           id: `P${String(counter).padStart(3, "0")}`,
+
           code: generateProductCode(
             category,
             flavor
           ),
+
           name: `${flavor} ${category}`,
+
           category,
+
           unit:
             categoryUnits[category] ?? "Unit",
+
           minimumStock:
             getMinimumStock(category),
         };
