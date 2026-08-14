@@ -291,6 +291,7 @@ export default function History() {
             {/* Search */}
             <div>
               <Input
+                label="Search"
                 placeholder="Search flavor, code, date, quantity, or remarks..."
                 value={search}
                 onChange={(e) =>
