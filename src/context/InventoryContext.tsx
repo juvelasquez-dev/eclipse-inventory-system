@@ -13,7 +13,6 @@ import type {
 } from "../types/inventory";
 
 import { getInventory } from "../utils/inventory";
-
 import { supabase } from "../lib/supabase";
 
 interface InventoryContextType {
@@ -25,19 +24,21 @@ interface InventoryContextType {
     stock: number;
   })[];
 
-  addProduct: (product: Product) => boolean;
+  addProduct: (
+    product: Product
+  ) => Promise<boolean>;
 
   updateProduct: (
     product: Product
-  ) => void;
+  ) => Promise<boolean>;
 
   deleteProduct: (
     id: string
-  ) => boolean;
+  ) => Promise<boolean>;
 
   addTransaction: (
     transaction: Transaction
-  ) => boolean;
+  ) => Promise<boolean>;
 }
 
 const InventoryContext =
@@ -51,8 +52,7 @@ interface Props {
 
 /*
  * Convert Supabase product data
- * from snake_case to our frontend
- * camelCase structure.
+ * from snake_case to frontend camelCase.
  */
 function mapProduct(row: any): Product {
   return {
@@ -67,8 +67,7 @@ function mapProduct(row: any): Product {
 
 /*
  * Convert Supabase transaction data
- * from snake_case to our frontend
- * camelCase structure.
+ * from snake_case to frontend camelCase.
  */
 function mapTransaction(
   row: any
@@ -93,14 +92,10 @@ export function InventoryProvider({
     useState<Transaction[]>([]);
 
   /*
-   * Load products and transactions
-   * from Supabase when the app starts.
+   * Load all data from Supabase.
    */
   useEffect(() => {
     async function loadData() {
-      /*
-       * Load products
-       */
       const {
         data: productData,
         error: productError,
@@ -122,9 +117,6 @@ export function InventoryProvider({
         );
       }
 
-      /*
-       * Load transactions
-       */
       const {
         data: transactionData,
         error: transactionError,
@@ -166,13 +158,11 @@ export function InventoryProvider({
   );
 
   /*
-   * Add a new product.
-   *
-   * Prevent duplicate product codes.
+   * Add product.
    */
-  function addProduct(
+  async function addProduct(
     product: Product
-  ): boolean {
+  ): Promise<boolean> {
     const exists = products.some(
       (existingProduct) =>
         existingProduct.code
@@ -187,109 +177,93 @@ export function InventoryProvider({
       return false;
     }
 
-    /*
-     * Optimistically add to UI.
-     */
+    const { data, error } =
+      await supabase
+        .from("products")
+        .insert({
+          id: product.id,
+          code: product.code,
+          name: product.name,
+          category: product.category,
+          unit: product.unit,
+          minimum_stock:
+            product.minimumStock,
+        })
+        .select()
+        .single();
+
+    if (error) {
+      console.error(
+        "Error adding product:",
+        error
+      );
+
+      return false;
+    }
+
     setProducts((prev) => [
       ...prev,
-      product,
+      mapProduct(data),
     ]);
-
-    /*
-     * Save to Supabase.
-     */
-    void (async () => {
-      const { error } =
-        await supabase
-          .from("products")
-          .insert({
-            id: product.id,
-            code: product.code,
-            name: product.name,
-            category: product.category,
-            unit: product.unit,
-            minimum_stock:
-              product.minimumStock,
-          });
-
-      if (error) {
-        console.error(
-          "Error adding product:",
-          error
-        );
-
-        /*
-         * Roll back optimistic update.
-         */
-        setProducts((prev) =>
-          prev.filter(
-            (item) =>
-              item.id !== product.id
-          )
-        );
-      }
-    })();
 
     return true;
   }
 
   /*
-   * Update an existing product.
+   * Update product.
    */
-  function updateProduct(
+  async function updateProduct(
     updatedProduct: Product
-  ) {
-    /*
-     * Update UI immediately.
-     */
+  ): Promise<boolean> {
+    const { data, error } =
+      await supabase
+        .from("products")
+        .update({
+          code: updatedProduct.code,
+          name: updatedProduct.name,
+          category:
+            updatedProduct.category,
+          unit: updatedProduct.unit,
+          minimum_stock:
+            updatedProduct.minimumStock,
+        })
+        .eq(
+          "id",
+          updatedProduct.id
+        )
+        .select()
+        .single();
+
+    if (error) {
+      console.error(
+        "Error updating product:",
+        error
+      );
+
+      return false;
+    }
+
     setProducts((prev) =>
       prev.map((product) =>
         product.id ===
         updatedProduct.id
-          ? updatedProduct
+          ? mapProduct(data)
           : product
       )
     );
 
-    /*
-     * Update Supabase.
-     */
-    void (async () => {
-      const { error } =
-        await supabase
-          .from("products")
-          .update({
-            code: updatedProduct.code,
-            name: updatedProduct.name,
-            category:
-              updatedProduct.category,
-            unit: updatedProduct.unit,
-            minimum_stock:
-              updatedProduct.minimumStock,
-          })
-          .eq(
-            "id",
-            updatedProduct.id
-          );
-
-      if (error) {
-        console.error(
-          "Error updating product:",
-          error
-        );
-      }
-    })();
+    return true;
   }
 
   /*
-   * Delete a product.
+   * Delete product.
    *
    * Products with transaction history
    * cannot be deleted.
    */
-  function deleteProduct(
+  async function deleteProduct(
     id: string
-  ): boolean {
+  ): Promise<boolean> {
     const hasTransactions =
       transactions.some(
         (transaction) =>
@@ -300,9 +274,21 @@ export function InventoryProvider({
       return false;
     }
 
-    /*
-     * Remove from UI immediately.
-     */
+    const { error } =
+      await supabase
+        .from("products")
+        .delete()
+        .eq("id", id);
+
+    if (error) {
+      console.error(
+        "Error deleting product:",
+        error
+      );
+
+      return false;
+    }
+
     setProducts((prev) =>
       prev.filter(
         (product) =>
@@ -310,37 +296,15 @@ export function InventoryProvider({
       )
     );
 
-    /*
-     * Delete from Supabase.
-     */
-    void (async () => {
-      const { error } =
-        await supabase
-          .from("products")
-          .delete()
-          .eq("id", id);
-
-      if (error) {
-        console.error(
-          "Error deleting product:",
-          error
-        );
-      }
-    })();
-
     return true;
   }
 
   /*
-   * Add a stock transaction.
-   *
-   * IN
-   * OUT
-   * ADJUSTMENT
+   * Add transaction.
    */
-  function addTransaction(
+  async function addTransaction(
     transaction: Transaction
-  ): boolean {
+  ): Promise<boolean> {
     const productExists =
       products.some(
         (product) =>
@@ -352,52 +316,36 @@ export function InventoryProvider({
       return false;
     }
 
-    /*
-     * Optimistically add transaction
-     * to the UI.
-     */
+    const { data, error } =
+      await supabase
+        .from("transactions")
+        .insert({
+          id: transaction.id,
+          product_id:
+            transaction.productId,
+          type: transaction.type,
+          quantity:
+            transaction.quantity,
+          date: transaction.date,
+          remarks:
+            transaction.remarks ?? "",
+        })
+        .select()
+        .single();
+
+    if (error) {
+      console.error(
+        "Error adding transaction:",
+        error
+      );
+
+      return false;
+    }
+
     setTransactions((prev) => [
       ...prev,
-      transaction,
+      mapTransaction(data),
     ]);
-
-    /*
-     * Save transaction to Supabase.
-     */
-    void (async () => {
-      const { error } =
-        await supabase
-          .from("transactions")
-          .insert({
-            id: transaction.id,
-            product_id:
-              transaction.productId,
-            type: transaction.type,
-            quantity:
-              transaction.quantity,
-            date: transaction.date,
-            remarks:
-              transaction.remarks ?? "",
-          });
-
-      if (error) {
-        console.error(
-          "Error adding transaction:",
-          error
-        );
-
-        /*
-         * Roll back optimistic update.
-         */
-        setTransactions((prev) =>
-          prev.filter(
-            (item) =>
-              item.id !==
-              transaction.id
-          )
-        );
-      }
-    })();
 
     return true;
   }

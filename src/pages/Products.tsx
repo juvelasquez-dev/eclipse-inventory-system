@@ -159,25 +159,24 @@ showToast("Product added successfully.");
     setDeletingProduct(product);
   }
 
-  function confirmDeleteProduct() {
-    if (!deletingProduct) return;
+  async function confirmDeleteProduct() {
+  if (!deletingProduct) return;
 
-    const deleted =
-      deleteProduct(deletingProduct.id);
+  const deleted =
+    await deleteProduct(deletingProduct.id);
 
-    if (deleted) {
-      showToast(
-        "Product deleted successfully."
-      );
-    } else {
-      showToast(
-        "This product cannot be deleted because it has transaction history."
-      );
-    }
-
-    setDeletingProduct(null);
+  if (deleted) {
+    showToast(
+      "Product deleted successfully."
+    );
+  } else {
+    showToast(
+      "This product cannot be deleted because it has transaction history."
+    );
   }
 
+  setDeletingProduct(null);
+}
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100">
       <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8 space-y-8">
