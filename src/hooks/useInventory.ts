@@ -72,42 +72,18 @@ export function useInventory() {
   /*
    * Get current stock of a product.
    *
-   * IN          = add
-   * OUT         = subtract
-   * ADJUSTMENT  = add/subtract based
-   *               on the quantity sign.
+   * The inventory table is the source of truth
+   * for the current stock quantity.
    */
   function getProductStock(
     productId: string
   ) {
-    return context.transactions
-      .filter(
-        (transaction) =>
-          transaction.productId === productId
-      )
-      .reduce(
-        (total, transaction) => {
-          if (transaction.type === "IN") {
-            return (
-              total + transaction.quantity
-            );
-          }
-
-          if (transaction.type === "OUT") {
-            return (
-              total - transaction.quantity
-            );
-          }
-
-          // ADJUSTMENT
-          // Positive = add stock
-          // Negative = remove stock
-          return (
-            total + transaction.quantity
-          );
-        },
-        0
-      );
+    return (
+      context.inventory.find(
+        (item) =>
+          item.id === productId
+      )?.stock ?? 0
+    );
   }
 
   /*
@@ -117,7 +93,8 @@ export function useInventory() {
     return context.inventory.filter(
       (product) =>
         product.stock > 0 &&
-        product.stock <= product.minimumStock
+        product.stock <=
+          product.minimumStock
     );
   }
 
@@ -139,7 +116,8 @@ export function useInventory() {
     quantity: number
   ) {
     return (
-      getProductStock(productId) >= quantity
+      getProductStock(productId) >=
+      quantity
     );
   }
 
@@ -159,16 +137,21 @@ export function useInventory() {
     return context.transactions
       .filter(
         (transaction) =>
-          transaction.productId === productId
+          transaction.productId ===
+          productId
       )
       .reduce(
         (movement, transaction) => {
-          if (transaction.type === "IN") {
+          if (
+            transaction.type === "IN"
+          ) {
             movement.stockIn +=
               transaction.quantity;
           }
 
-          if (transaction.type === "OUT") {
+          if (
+            transaction.type === "OUT"
+          ) {
             movement.stockOut +=
               transaction.quantity;
           }
@@ -177,7 +160,9 @@ export function useInventory() {
             transaction.type ===
             "ADJUSTMENT"
           ) {
-            if (transaction.quantity >= 0) {
+            if (
+              transaction.quantity >= 0
+            ) {
               movement.adjustmentIn +=
                 transaction.quantity;
             } else {
@@ -200,10 +185,10 @@ export function useInventory() {
   }
 
   /*
-   * Get all products with their transaction
-   * movement totals.
+   * Get all products with their
+   * transaction movement totals.
    *
-   * This will allow the Dashboard to create
+   * This allows the Dashboard to create
    * charts without adding fake/mock data.
    */
   function getProductMovementSummary() {
@@ -248,9 +233,9 @@ export function useInventory() {
   /*
    * Get products ranked by Stock Out quantity.
    *
-   * This represents the flavors/products that
-   * have been ordered/removed from inventory
-   * the most.
+   * This represents the flavors/products
+   * that have been ordered/removed from
+   * inventory the most.
    */
   function getMostOrderedProducts() {
     return getProductMovementSummary()
@@ -267,8 +252,8 @@ export function useInventory() {
   /*
    * Get products ranked by Stock In quantity.
    *
-   * This represents the flavors/products that
-   * have received the most incoming stock.
+   * This represents the flavors/products
+   * that have received the most incoming stock.
    */
   function getMostStockedProducts() {
     return getProductMovementSummary()
