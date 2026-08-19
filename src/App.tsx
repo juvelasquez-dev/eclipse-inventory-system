@@ -11,6 +11,7 @@ import ProtectedRoute from "./components/auth/ProtectedRoute";
 import Login from "./pages/Login/Login";
 import System from "./pages/System/System";
 import POS from "./pages/POS/POS";
+import POSHistory from "./pages/POS/POSHistory";
 
 import Dashboard from "./pages/Inventory/Dashboard";
 import Products from "./pages/Inventory/Products";
@@ -96,6 +97,11 @@ function App() {
                 <Route
                   path="/pos"
                   element={<POS />}
+                />
+
+                <Route
+                  path="/pos/history"
+                  element={<POSHistory />}
                 />
               </Route>
 

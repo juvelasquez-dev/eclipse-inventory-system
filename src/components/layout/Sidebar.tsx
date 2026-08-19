@@ -68,6 +68,11 @@ const posMenuItems: MenuItem[] = [
     path: "/pos",
     icon: ShoppingCart,
   },
+  {
+    name: "Sales History",
+    path: "/pos/history",
+    icon: History,
+  },
 ];
 
 interface SidebarProps {
