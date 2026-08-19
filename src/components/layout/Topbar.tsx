@@ -1,4 +1,8 @@
-import { Menu, LogOut } from "lucide-react";
+import {
+  ArrowLeft,
+  Menu,
+  LogOut,
+} from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import { supabase } from "../../lib/supabase";
@@ -50,6 +54,16 @@ export default function Topbar({
           className="rounded-lg p-2 text-slate-600 transition hover:bg-slate-100 md:hidden"
         >
           <Menu size={22} />
+        </button>
+
+        {/* Back to system selection */}
+        <button
+          type="button"
+          onClick={() => navigate("/system")}
+          className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-slate-200 px-2.5 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-50 hover:text-slate-900 sm:px-3"
+        >
+          <ArrowLeft size={16} />
+          <span>Back to Systems</span>
         </button>
 
         {/* Module title */}

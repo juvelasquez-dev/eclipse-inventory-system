@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import Button from "../../components/ui/Button";
@@ -19,6 +19,38 @@ export default function Login() {
 
   const [loading, setLoading] =
     useState(false);
+
+  const [checkingSession, setCheckingSession] =
+    useState(true);
+
+  useEffect(() => {
+    async function redirectAuthenticatedUser() {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (session) {
+        navigate("/system", {
+          replace: true,
+        });
+        return;
+      }
+
+      setCheckingSession(false);
+    }
+
+    void redirectAuthenticatedUser();
+  }, [navigate]);
+
+  if (checkingSession) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50">
+        <p className="text-sm text-slate-500">
+          Checking session...
+        </p>
+      </div>
+    );
+  }
 
   async function handleSubmit(
     e: React.FormEvent<HTMLFormElement>

@@ -7,14 +7,10 @@ import {
   Boxes,
   History,
   ShoppingCart,
-  ArrowLeft,
   X,
 } from "lucide-react";
 
-import {
-  NavLink,
-  useNavigate,
-} from "react-router-dom";
+import { NavLink } from "react-router-dom";
 
 type SidebarModule = "inventory" | "pos";
 
@@ -86,8 +82,6 @@ export default function Sidebar({
   open,
   onClose,
 }: SidebarProps) {
-  const navigate = useNavigate();
-
   const isPOS = module === "pos";
 
   const menuItems = isPOS
@@ -101,11 +95,6 @@ export default function Sidebar({
   const footerDescription = isPOS
     ? "Point of Sale"
     : "Inventory Management";
-
-  function handleBackToSystems() {
-    onClose();
-    navigate("/system");
-  }
 
   return (
     <>
@@ -218,22 +207,6 @@ export default function Sidebar({
             })}
           </div>
         </nav>
-
-        {/* Back to System Selection */}
-        <div className="px-4 pb-4">
-          <button
-            type="button"
-            onClick={handleBackToSystems}
-            className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-400 transition hover:bg-white/5 hover:text-white"
-          >
-            <ArrowLeft
-              size={18}
-              strokeWidth={2}
-            />
-
-            <span>Back to Systems</span>
-          </button>
-        </div>
 
         {/* Footer */}
         <div className="border-t border-slate-800 px-6 py-4">
