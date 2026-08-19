@@ -3,8 +3,11 @@ import { useEffect, useState } from "react";
 import ProductForm, {
   type ProductFormData,
 } from "../components/inventory/ProductForm";
+
 import ProductTable from "../components/inventory/ProductTable";
+
 import { useToast } from "../context/ToastContext";
+
 import Button from "../components/ui/Button";
 import Modal from "../components/ui/Modal";
 import ConfirmModal from "../components/ui/ConfirmModal";
@@ -111,41 +114,63 @@ export default function Products() {
     }
   }, [currentPage, totalPages]);
 
-  function handleSubmit(
+  /*
+   * Add or update product.
+   */
+  async function handleSubmit(
     data: ProductFormData
   ) {
     if (editingProduct) {
-      updateProduct({
-        ...editingProduct,
-        ...data,
-      });
+      const updated =
+        await updateProduct({
+          ...editingProduct,
+          ...data,
+        });
+
+      if (!updated) {
+        showToast(
+          "Failed to update product."
+        );
+        return;
+      }
 
       showToast(
         "Product updated successfully."
       );
     } else {
-      const added = addProduct({
-  id: crypto.randomUUID(),
-  ...data,
-});
+      const added =
+        await addProduct({
+          id: crypto.randomUUID(),
+          ...data,
+        });
 
-if (!added) {
-  showToast("This product already exists.");
-  return;
-}
+      if (!added) {
+        showToast(
+          "This product already exists."
+        );
+        return;
+      }
 
-showToast("Product added successfully.");
+      showToast(
+        "Product added successfully."
+      );
     }
 
     setEditingProduct(null);
     setOpen(false);
   }
 
+  /*
+   * Open Add Product modal.
+   */
   function handleAddProduct() {
     setEditingProduct(null);
     setOpen(true);
   }
 
+  /*
+   * Open Edit Product modal.
+   */
   function handleEditProduct(
     product: Product
   ) {
@@ -153,36 +178,47 @@ showToast("Product added successfully.");
     setOpen(true);
   }
 
+  /*
+   * Open Delete confirmation modal.
+   */
   function handleDeleteProduct(
     product: Product
   ) {
     setDeletingProduct(product);
   }
 
+  /*
+   * Confirm product deletion.
+   */
   async function confirmDeleteProduct() {
-  if (!deletingProduct) return;
+    if (!deletingProduct) {
+      return;
+    }
 
-  const deleted =
-    await deleteProduct(deletingProduct.id);
+    const deleted =
+      await deleteProduct(
+        deletingProduct.id
+      );
 
-  if (deleted) {
-    showToast(
-      "Product deleted successfully."
-    );
-  } else {
-    showToast(
-      "This product cannot be deleted because it has transaction history."
-    );
+    if (deleted) {
+      showToast(
+        "Product deleted successfully."
+      );
+    } else {
+      showToast(
+        "This product cannot be deleted because it has transaction history."
+      );
+    }
+
+    setDeletingProduct(null);
   }
 
-  setDeletingProduct(null);
-}
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100">
-      <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8 space-y-8">
+      <div className="mx-auto max-w-7xl space-y-8 px-4 py-10 sm:px-6 lg:px-8">
 
         {/* Header */}
-        <div className="relative overflow-hidden rounded-2xl bg-white border border-slate-200 shadow-sm px-6 py-8 sm:px-8">
+        <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white px-6 py-8 shadow-sm sm:px-8">
 
           <div className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-gradient-to-br from-violet-100 to-fuchsia-100 opacity-60 blur-2xl" />
 
@@ -193,7 +229,7 @@ showToast("Product added successfully.");
                 Catalog
               </span>
 
-              <h1 className="mt-4 text-4xl font-bold tracking-tight bg-gradient-to-r from-slate-900 to-slate-600 bg-clip-text text-transparent">
+              <h1 className="mt-4 bg-gradient-to-r from-slate-900 to-slate-600 bg-clip-text text-4xl font-bold tracking-tight text-transparent">
                 Products
               </h1>
 
@@ -212,7 +248,7 @@ showToast("Product added successfully.");
         </div>
 
         {/* Product Content */}
-        <div className="rounded-2xl bg-white border border-slate-200 shadow-sm p-4 sm:p-6 space-y-4">
+        <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
 
           {/* Filters */}
           <div className="grid grid-cols-1 items-end gap-4 md:grid-cols-3">
@@ -236,7 +272,9 @@ showToast("Product added successfully.");
                 label="Size"
                 value={sizeFilter}
                 onChange={(e) =>
-                  setSizeFilter(e.target.value)
+                  setSizeFilter(
+                    e.target.value
+                  )
                 }
                 options={[
                   {
@@ -270,7 +308,8 @@ showToast("Product added successfully.");
                   PRODUCTS_PER_PAGE,
                 filteredProducts.length
               )}{" "}
-              of {filteredProducts.length} products
+              of {filteredProducts.length}{" "}
+              products
             </span>
 
             {sizeFilter !== "ALL" && (
@@ -335,7 +374,9 @@ showToast("Product added successfully.");
 
                 {/* Page numbers */}
                 {Array.from(
-                  { length: totalPages },
+                  {
+                    length: totalPages,
+                  },
                   (_, index) =>
                     index + 1
                 ).map((page) => (

@@ -61,6 +61,7 @@ function mapProduct(row: any): Product {
     name: row.name,
     category: row.category,
     unit: row.unit,
+    price: row.price,
     minimumStock: row.minimum_stock,
   };
 }
@@ -186,6 +187,7 @@ export function InventoryProvider({
           name: product.name,
           category: product.category,
           unit: product.unit,
+          price: product.price,
           minimum_stock:
             product.minimumStock,
         })
@@ -224,6 +226,7 @@ export function InventoryProvider({
           category:
             updatedProduct.category,
           unit: updatedProduct.unit,
+          price: updatedProduct.price,
           minimum_stock:
             updatedProduct.minimumStock,
         })

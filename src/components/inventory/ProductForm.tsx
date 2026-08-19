@@ -38,6 +38,7 @@ export interface ProductFormData {
   name: string;
   category: string;
   unit: string;
+  price: number;
   minimumStock: number;
 }
 
@@ -74,6 +75,10 @@ export default function ProductForm({
 
   const [isNewFlavor, setIsNewFlavor] =
     useState(false);
+
+  const [price, setPrice] = useState(
+    initialValues?.price ?? 0
+  );
 
   const [minimumStock, setMinimumStock] =
     useState(
@@ -178,6 +183,13 @@ export default function ProductForm({
       return;
     }
 
+    if (price < 0) {
+      setError(
+        "Price cannot be negative."
+      );
+      return;
+    }
+
     if (minimumStock < 0) {
       setError(
         "Minimum stock cannot be negative."
@@ -237,6 +249,7 @@ export default function ProductForm({
       name: `${cleanFlavor} ${category}`,
       category,
       unit,
+      price,
       minimumStock,
     });
   }
@@ -253,6 +266,7 @@ export default function ProductForm({
       )}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+
         {/* Category */}
         <Select
           label="Category"
@@ -366,6 +380,21 @@ export default function ProductForm({
             placeholder="Generated automatically"
           />
         </div>
+
+        {/* Price */}
+        <Input
+          label="Price"
+          type="number"
+          min={0}
+          step="0.01"
+          value={price}
+          onChange={(e) =>
+            setPrice(
+              Number(e.target.value)
+            )
+          }
+          placeholder="0.00"
+        />
 
         {/* Minimum Stock */}
         <Input

@@ -35,6 +35,10 @@ export default function ProductTable({
                 Unit
               </th>
 
+              <th className="px-6 py-3.5 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Price
+              </th>
+
               <th className="px-6 py-3.5 text-center text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Minimum Stock
               </th>
@@ -67,6 +71,17 @@ export default function ProductTable({
                   {product.unit}
                 </td>
 
+                <td className="px-6 py-4 text-right tabular-nums text-slate-900">
+                  ₱
+                  {Number(product.price ?? 0).toLocaleString(
+                    "en-PH",
+                    {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    }
+                  )}
+                </td>
+
                 <td className="px-6 py-4 text-center tabular-nums text-slate-900">
                   {product.minimumStock}
                 </td>
@@ -94,7 +109,7 @@ export default function ProductTable({
             {products.length === 0 && (
               <tr>
                 <td
-                  colSpan={6}
+                  colSpan={7}
                   className="px-6 py-12 text-center text-sm text-slate-500"
                 >
                   No products found.
