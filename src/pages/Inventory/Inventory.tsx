@@ -1,14 +1,14 @@
 import { useState } from "react";
 
-import InventoryTable from "../components/inventory/InventoryTable";
-import Input from "../components/ui/Input";
-import Select from "../components/ui/Select";
-import Button from "../components/ui/Button";
+import InventoryTable from "../../components/inventory/InventoryTable";
+import Input from "../../components/ui/Input";
+import Select from "../../components/ui/Select";
+import Button from "../../components/ui/Button";
 
-import { categories } from "../mock/categories";
-import { useInventory } from "../hooks/useInventory";
-import { exportInventoryToExcel } from "../utils/excel";
-import { useToast } from "../context/ToastContext";
+import { categories } from "../../mock/categories";
+import { useInventory } from "../../hooks/useInventory";
+import { exportInventoryToExcel } from "../../utils/excel";
+import { useToast } from "../../context/ToastContext";
 
 export default function Inventory() {
   const {

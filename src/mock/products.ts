@@ -171,6 +171,8 @@ function generateProducts(): Product[] {
           unit:
             categoryUnits[category] ?? "Unit",
 
+          price: 0,
+
           minimumStock:
             getMinimumStock(category),
         };

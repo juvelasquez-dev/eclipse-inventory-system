@@ -2,22 +2,22 @@ import { useEffect, useState } from "react";
 
 import ProductForm, {
   type ProductFormData,
-} from "../components/inventory/ProductForm";
+} from "../../components/inventory/ProductForm";
 
-import ProductTable from "../components/inventory/ProductTable";
+import ProductTable from "../../components/inventory/ProductTable";
 
-import { useToast } from "../context/ToastContext";
+import { useToast } from "../../context/ToastContext";
 
-import Button from "../components/ui/Button";
-import Modal from "../components/ui/Modal";
-import ConfirmModal from "../components/ui/ConfirmModal";
-import Input from "../components/ui/Input";
-import Select from "../components/ui/Select";
+import Button from "../../components/ui/Button";
+import Modal from "../../components/ui/Modal";
+import ConfirmModal from "../../components/ui/ConfirmModal";
+import Input from "../../components/ui/Input";
+import Select from "../../components/ui/Select";
 
-import { useInventory } from "../hooks/useInventory";
-import { categories } from "../mock/categories";
+import { useInventory } from "../../hooks/useInventory";
+import { categories } from "../../mock/categories";
 
-import type { Product } from "../types/inventory";
+import type { Product } from "../../types/inventory";
 
 const PRODUCTS_PER_PAGE = 10;
 

@@ -1,15 +1,15 @@
 import { useState } from "react";
 
-import Button from "../components/ui/Button";
-import Input from "../components/ui/Input";
-import Select from "../components/ui/Select";
-import Modal from "../components/ui/Modal";
-import StockTable from "../components/inventory/StockTable";
-import TransactionForm from "../components/inventory/TransactionForm";
+import Button from "../../components/ui/Button";
+import Input from "../../components/ui/Input";
+import Select from "../../components/ui/Select";
+import Modal from "../../components/ui/Modal";
+import StockTable from "../../components/inventory/StockTable";
+import TransactionForm from "../../components/inventory/TransactionForm";
 
-import { useInventory } from "../hooks/useInventory";
-import { useToast } from "../context/ToastContext";
-import { categories } from "../mock/categories";
+import { useInventory } from "../../hooks/useInventory";
+import { useToast } from "../../context/ToastContext";
+import { categories } from "../../mock/categories";
 
 export default function StockAdjustment() {
   const [open, setOpen] = useState(false);

@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { useInventory } from "../hooks/useInventory";
+import { useInventory } from "../../hooks/useInventory";
 
-import Input from "../components/ui/Input";
-import Select from "../components/ui/Select";
+import Input from "../../components/ui/Input";
+import Select from "../../components/ui/Select";
 
-import { categories } from "../mock/categories";
+import { categories } from "../../mock/categories";
 
 export default function History() {
   const {

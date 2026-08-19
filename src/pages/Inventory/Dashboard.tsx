@@ -12,7 +12,7 @@ import {
   Tooltip,
 } from "recharts";
 
-import { useInventory } from "../hooks/useInventory";
+import { useInventory } from "../../hooks/useInventory";
 
 const TRANSACTIONS_PER_PAGE = 5;
 

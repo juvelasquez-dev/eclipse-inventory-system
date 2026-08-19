@@ -8,16 +8,16 @@ import MainLayout from "./components/layout/MainLayout";
 
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 
-import Login from "./pages/Login";
-import System from "./pages/System";
-import POS from "./pages/POS";
-import Dashboard from "./pages/Dashboard";
-import Products from "./pages/Products";
-import StockIn from "./pages/StockIn";
-import StockOut from "./pages/StockOut";
-import Inventory from "./pages/Inventory";
-import History from "./pages/History";
-import StockAdjustment from "./pages/StockAdjustment";
+import Login from "./pages/Login/Login";
+import System from "./pages/System/System";
+import POS from "./pages/POS/POS";
+import Dashboard from "./pages/Inventory/Dashboard";
+import Products from "./pages/Inventory/Products";
+import StockIn from "./pages/Inventory/StockIn";
+import StockOut from "./pages/Inventory/StockOut";
+import Inventory from "./pages/Inventory/Inventory";
+import History from "./pages/Inventory/History";
+import StockAdjustment from "./pages/Inventory/StockAdjustment";
 
 import { ToastProvider } from "./context/ToastContext";
 import { InventoryProvider } from "./context/InventoryContext";

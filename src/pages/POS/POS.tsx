@@ -1,11 +1,11 @@
 import { useMemo, useState } from "react";
 
-import Button from "../components/ui/Button";
-import Input from "../components/ui/Input";
+import Button from "../../components/ui/Button";
+import Input from "../../components/ui/Input";
 
-import { useInventory } from "../hooks/useInventory";
+import { useInventory } from "../../hooks/useInventory";
 
-import type { Product } from "../types/inventory";
+import type { Product } from "../../types/inventory";
 
 interface CartItem {
   product: Product;
