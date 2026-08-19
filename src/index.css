@@ -39,3 +39,571 @@ select,
 textarea {
   font: inherit;
 }
+
+/* =========================================================
+   PRINT RECEIPT
+   ========================================================= */
+
+.print-receipt {
+  display: none;
+}
+
+/* =========================================================
+   PRINT MODE
+   ========================================================= */
+
+@media print {
+  /*
+   * Thermal receipt paper.
+   * Chrome may still show an A4 preview depending on the
+   * selected printer/PDF destination. The receipt itself
+   * remains fixed at 80mm.
+   */
+  @page {
+    size: 80mm auto;
+    margin: 0;
+  }
+
+  html,
+  body {
+    width: 80mm;
+    min-width: 80mm;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+  }
+
+  body {
+    overflow: visible !important;
+  }
+
+  /*
+   * Hide the entire application.
+   */
+  body > #root {
+    display: none !important;
+  }
+
+  /*
+   * The receipt is rendered outside the application root
+   * when printing.
+   */
+  .print-receipt {
+    display: block !important;
+    visibility: visible !important;
+
+    width: 80mm !important;
+    max-width: 80mm !important;
+
+    margin: 0 !important;
+    padding: 6mm 5mm !important;
+
+    background: #ffffff !important;
+    color: #000000 !important;
+
+    font-family:
+      Arial,
+      Helvetica,
+      sans-serif !important;
+
+    font-size: 10px !important;
+    line-height: 1.35 !important;
+
+    box-sizing: border-box !important;
+
+    overflow: visible !important;
+  }
+
+  .print-receipt * {
+    visibility: visible !important;
+  }
+
+  /*
+   * Header
+   */
+  .print-receipt__header {
+    width: 100%;
+    text-align: center;
+
+    margin: 0 0 8px 0;
+    padding: 0;
+  }
+
+  .print-receipt__company {
+    margin: 0;
+    font-size: 11px;
+    font-weight: 400;
+    line-height: 1.35;
+  }
+
+  .print-receipt__title {
+    margin: 7px 0 2px 0;
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+
+  .print-receipt__number {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+
+  /*
+   * Divider
+   */
+  .print-receipt__divider {
+    border: 0;
+    border-top: 1px dashed #000;
+    margin: 7px 0;
+    height: 0;
+  }
+
+  /*
+   * Customer / transaction information
+   */
+  .print-receipt__details {
+    width: 100%;
+    margin: 0;
+    padding: 0;
+  }
+
+  .print-receipt__detail-row {
+    display: flex;
+    width: 100%;
+    justify-content: space-between;
+    align-items: flex-start;
+
+    margin: 1px 0;
+    padding: 0;
+  }
+
+  .print-receipt__detail-label {
+    flex: 0 0 auto;
+    font-weight: 700;
+    text-align: left;
+    padding-right: 8px;
+  }
+
+  .print-receipt__detail-value {
+    flex: 1 1 auto;
+    min-width: 0;
+
+    text-align: right;
+    overflow-wrap: anywhere;
+  }
+
+  /*
+   * Items table
+   */
+  .print-receipt__items {
+    width: 100%;
+    margin: 0;
+    padding: 0;
+  }
+
+  .print-receipt__items table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+  }
+
+  .print-receipt__items th,
+  .print-receipt__items td {
+    padding: 1px 0;
+    margin: 0;
+
+    font-size: 9px;
+    line-height: 1.3;
+
+    vertical-align: top;
+  }
+
+  .print-receipt__items th {
+    font-weight: 700;
+  }
+
+  /*
+   * Column widths
+   */
+  .print-receipt__items th:nth-child(1),
+  .print-receipt__items td:nth-child(1) {
+    width: 44%;
+    text-align: left;
+  }
+
+  .print-receipt__items th:nth-child(2),
+  .print-receipt__items td:nth-child(2) {
+    width: 14%;
+    text-align: center;
+  }
+
+  .print-receipt__items th:nth-child(3),
+  .print-receipt__items td:nth-child(3) {
+    width: 20%;
+    text-align: right;
+  }
+
+  .print-receipt__items th:nth-child(4),
+  .print-receipt__items td:nth-child(4) {
+    width: 22%;
+    text-align: right;
+  }
+
+  /*
+   * Product name
+   */
+  .print-receipt__product-name {
+    font-weight: 700;
+    overflow-wrap: anywhere;
+  }
+
+  .print-receipt__product-code {
+    display: block;
+
+    font-size: 8px;
+    font-weight: 400;
+
+    line-height: 1.2;
+  }
+
+  /*
+   * Totals
+   */
+  .print-receipt__totals {
+    width: 100%;
+    margin: 0;
+    padding: 0;
+  }
+
+  .print-receipt__total-row {
+    display: flex;
+    width: 100%;
+
+    justify-content: space-between;
+    align-items: center;
+
+    margin: 2px 0;
+    padding: 0;
+  }
+
+  .print-receipt__total-label {
+    text-align: left;
+  }
+
+  .print-receipt__total-value {
+    text-align: right;
+    font-weight: 700;
+  }
+
+  /*
+   * Grand total
+   */
+  .print-receipt__grand-total {
+    display: flex;
+
+    width: 100%;
+
+    justify-content: space-between;
+    align-items: center;
+
+    margin-top: 7px;
+    padding-top: 7px;
+
+    border-top: 2px solid #000;
+
+    font-size: 14px;
+    font-weight: 700;
+  }
+
+  /*
+   * Footer
+   */
+  .print-receipt__footer {
+    width: 100%;
+
+    margin-top: 12px;
+
+    text-align: center;
+
+    font-size: 9px;
+    line-height: 1.4;
+  }
+
+  .print-receipt__footer p {
+    margin: 2px 0;
+  }
+
+  .print-receipt__footer-number {
+    margin-top: 6px !important;
+    font-weight: 700;
+    font-size: 10px;
+  }
+
+  /*
+   * Prevent receipt sections from being split.
+   */
+  .print-receipt__header,
+  .print-receipt__details,
+  .print-receipt__items,
+  .print-receipt__totals,
+  .print-receipt__footer {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /*
+   * Prevent table rows from being split.
+   */
+  .print-receipt tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}
+
+/* Final thermal receipt rules for the body portal markup. */
+/* =========================================================
+   PRINT RECEIPT (Delivery Receipt — 80mm thermal)
+   ========================================================= */
+
+.dr-receipt {
+  display: none;
+}
+
+@media print {
+  @page {
+    size: 80mm auto;
+    margin: 0;
+  }
+
+  html,
+  body {
+    width: 80mm;
+    min-width: 80mm;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+  }
+
+  body {
+    overflow: visible !important;
+  }
+
+  /* Hide the entire application when printing. */
+  body > #root {
+    display: none !important;
+  }
+
+  /* Show only the receipt, rendered via portal into document.body. */
+  .dr-receipt {
+    display: block !important;
+    visibility: visible !important;
+
+    width: 80mm !important;
+    max-width: 80mm !important;
+    min-width: 80mm !important;
+
+    margin: 0 !important;
+    padding: 4mm 4mm !important;
+
+    background: #ffffff !important;
+    color: #000000 !important;
+
+    font-family: "Courier New", Courier, monospace !important;
+    font-size: 11px !important;
+    line-height: 1.4 !important;
+
+    box-sizing: border-box !important;
+    overflow: visible !important;
+  }
+
+  .dr-receipt * {
+    visibility: visible !important;
+    box-sizing: border-box;
+  }
+
+  /* Company header */
+  .dr-header {
+    text-align: center;
+  }
+
+  .dr-header p {
+    margin: 0;
+  }
+
+  .dr-brand {
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 1px;
+  }
+
+  .dr-company {
+    margin-top: 2px !important;
+    font-size: 11px;
+    font-weight: 400;
+  }
+
+  .dr-address,
+  .dr-phone {
+    font-size: 11px;
+  }
+
+  /* Dividers */
+  .dr-divider {
+    height: 0;
+    margin: 6px 0;
+    border: 0;
+    border-top: 1px dashed #000;
+  }
+
+  .dr-divider--thick {
+    border-top: 1px dashed #000;
+  }
+
+  /* Document title / DR number */
+  .dr-doc {
+    text-align: center;
+  }
+
+  .dr-doc-title {
+    margin: 0;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+  }
+
+  .dr-doc-number {
+    margin: 2px 0 0 0 !important;
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  /* Transaction details */
+  .dr-info-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin: 1px 0;
+    font-size: 11px;
+  }
+
+  .dr-info-row > span {
+    flex: 0 0 auto;
+    font-weight: 400;
+  }
+
+  .dr-info-row > strong {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding-left: 8px;
+    font-weight: 400;
+    text-align: right;
+    overflow-wrap: anywhere;
+  }
+
+  .dr-wrap {
+    overflow-wrap: anywhere;
+  }
+
+  /* Items table */
+  .dr-items-head {
+    display: grid;
+    grid-template-columns: minmax(0, 40%) 15% 20% 25%;
+    margin-bottom: 4px;
+    font-size: 10px;
+    font-weight: 700;
+  }
+
+  .dr-item-row {
+    display: grid;
+    grid-template-columns: minmax(0, 40%) 15% 20% 25%;
+    align-items: start;
+    margin: 4px 0;
+    font-size: 10px;
+
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .dr-col-item {
+    min-width: 0;
+    text-align: left;
+  }
+
+  .dr-item-row .dr-col-item strong {
+    display: block;
+    font-weight: 700;
+    overflow-wrap: anywhere;
+  }
+
+  .dr-item-code {
+    display: block;
+    font-size: 9px;
+    font-weight: 400;
+  }
+
+  .dr-col-qty {
+    text-align: center;
+  }
+
+  .dr-col-price,
+  .dr-col-amount {
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  /* Totals */
+  .dr-total-row {
+    display: flex;
+    justify-content: space-between;
+    margin: 2px 0;
+    font-size: 11px;
+  }
+
+  .dr-total-row > strong {
+    font-weight: 700;
+  }
+
+  /* Grand total */
+  .dr-grand-total {
+    display: flex;
+    justify-content: space-between;
+    margin: 4px 0;
+    font-size: 14px;
+    font-weight: 700;
+  }
+
+  /* Footer */
+  .dr-footer {
+    margin-top: 4px;
+    text-align: center;
+    font-size: 10px;
+    line-height: 1.4;
+  }
+
+  .dr-footer p {
+    margin: 2px 0;
+  }
+
+  .dr-footer-number {
+    margin-top: 6px !important;
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  /* Avoid awkward page/section splits */
+  .dr-header,
+  .dr-info,
+  .dr-items,
+  .dr-totals,
+  .dr-footer {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .dr-item-row {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}

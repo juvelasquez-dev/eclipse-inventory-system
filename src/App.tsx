@@ -11,6 +11,7 @@ import ProtectedRoute from "./components/auth/ProtectedRoute";
 import Login from "./pages/Login/Login";
 import System from "./pages/System/System";
 import POS from "./pages/POS/POS";
+
 import Dashboard from "./pages/Inventory/Dashboard";
 import Products from "./pages/Inventory/Products";
 import StockIn from "./pages/Inventory/StockIn";
@@ -43,14 +44,13 @@ function App() {
                 path="/system"
                 element={<System />}
               />
-              {/* POS */}
-                <Route
-                  path="/pos"
-                  element={<POS />}
-                />
-              {/* Main Application */}
-              <Route element={<MainLayout />}>
 
+              {/* Inventory System */}
+              <Route
+                element={
+                  <MainLayout module="inventory" />
+                }
+              >
                 <Route
                   path="/"
                   element={<Dashboard />}
@@ -85,7 +85,18 @@ function App() {
                   path="/stock-adjustment"
                   element={<StockAdjustment />}
                 />
+              </Route>
 
+              {/* POS System */}
+              <Route
+                element={
+                  <MainLayout module="pos" />
+                }
+              >
+                <Route
+                  path="/pos"
+                  element={<POS />}
+                />
               </Route>
 
             </Route>
