@@ -3,10 +3,30 @@ import {
   Package,
   ShoppingCart,
   ArrowRight,
+  LogOut,
 } from "lucide-react";
+
+import { supabase } from "../../lib/supabase";
 
 export default function System() {
   const navigate = useNavigate();
+
+  async function handleLogout() {
+    const { error } =
+      await supabase.auth.signOut();
+
+    if (error) {
+      console.error(
+        "Logout failed:",
+        error
+      );
+      return;
+    }
+
+    navigate("/login", {
+      replace: true,
+    });
+  }
 
   return (
     <div className="relative flex min-h-screen flex-col bg-slate-950">
@@ -32,6 +52,15 @@ export default function System() {
         <span className="text-base font-semibold tracking-tight text-white">
           Eclipse
         </span>
+
+        <button
+          type="button"
+          onClick={handleLogout}
+          className="ml-auto inline-flex items-center gap-2 rounded-lg border border-white/15 px-3 py-2 text-sm font-medium text-slate-300 transition hover:border-emerald-400/40 hover:bg-white/[0.06] hover:text-white"
+        >
+          <LogOut size={16} />
+          <span>Logout</span>
+        </button>
       </div>
 
       {/* Main content */}

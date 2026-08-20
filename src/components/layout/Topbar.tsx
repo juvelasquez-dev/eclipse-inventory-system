@@ -3,6 +3,7 @@ import {
   Menu,
   LogOut,
 } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { supabase } from "../../lib/supabase";
@@ -19,11 +20,56 @@ export default function Topbar({
   onMenuClick,
 }: TopbarProps) {
   const navigate = useNavigate();
+  const [username, setUsername] =
+    useState("User");
+  const [areaCode, setAreaCode] =
+    useState("");
 
   const title =
     module === "pos"
       ? "Point of Sale"
       : "Inventory Management";
+
+  useEffect(() => {
+    async function loadUserIdentity() {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        return;
+      }
+
+      const metadataUsername =
+        user.user_metadata?.username ||
+        user.user_metadata?.user_name;
+
+      setUsername(
+        metadataUsername ||
+          user.email?.split("@")[0] ||
+          "User"
+      );
+
+      const { data, error } = await supabase
+        .from("user_area_assignments")
+        .select("area_code")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (error) {
+        console.error(
+          "Unable to load user area assignment:",
+          error
+        );
+        return;
+      }
+
+      setAreaCode(data?.area_code || "");
+    }
+
+    void loadUserIdentity();
+  }, []);
 
   async function handleLogout() {
     const { error } =
@@ -74,9 +120,16 @@ export default function Topbar({
 
       {/* Right side */}
       <div className="flex shrink-0 items-center gap-3">
-        {/* User role */}
-        <span className="hidden text-sm text-slate-500 sm:block">
-          Admin
+        {/* User identity */}
+        <span className="max-w-[9rem] truncate text-xs text-slate-500 sm:max-w-[16rem] sm:text-sm">
+          <span aria-hidden="true">&#128100;</span>{" "}
+          {username}
+          {areaCode && (
+            <>
+              <span className="mx-1.5 text-slate-300">•</span>
+              {areaCode}
+            </>
+          )}
         </span>
 
         {/* Logout */}

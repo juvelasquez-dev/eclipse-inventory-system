@@ -83,17 +83,26 @@ export default function Login() {
      * with the username.
      */
     const { data: email, error: userError } =
-            await supabase.rpc(
-                "get_login_email",
-                {
-                p_username: trimmedUsername,
-                }
-            );
+      await supabase.rpc(
+        "get_login_email",
+        {
+          p_username: trimmedUsername,
+        }
+      );
 
-    if (
-  userError ||
-  !email
-) {
+    if (userError) {
+      console.error(
+        "Supabase username lookup failed:",
+        userError
+      );
+    }
+
+    const loginEmail =
+      typeof email === "string"
+        ? email.trim()
+        : "";
+
+    if (userError || !loginEmail) {
       setLoading(false);
       setError(
         "Invalid username or password."
@@ -109,13 +118,25 @@ export default function Login() {
      */
     const { error: loginError } =
       await supabase.auth.signInWithPassword({
-        email,
+        email: loginEmail,
         password,
       });
 
     setLoading(false);
 
     if (loginError) {
+      console.error(
+        "Supabase signInWithPassword failed:",
+        {
+          username: trimmedUsername,
+          email: loginEmail,
+          passwordProvided: password.length > 0,
+          name: loginError.name,
+          message: loginError.message,
+          status: loginError.status,
+          code: loginError.code,
+        }
+      );
       setError(
         "Invalid username or password."
       );

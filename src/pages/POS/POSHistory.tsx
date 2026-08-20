@@ -13,12 +13,33 @@ import { supabase } from "../../lib/supabase";
 
 interface POSHistoryRow extends ReceiptData {
   id: string;
+  cashierUsername: string;
   transactionStatus: string;
+}
+
+function getDisplayReceiptNumber(row: any) {
+  if (
+    row.area_code &&
+    row.receipt_number !== null &&
+    row.receipt_number !== undefined
+  ) {
+    return `${row.area_code}-${row.receipt_number}`;
+  }
+
+  if (
+    row.delivery_receipt_sequence !== null &&
+    row.delivery_receipt_sequence !== undefined
+  ) {
+    return `DR-${String(row.delivery_receipt_sequence).padStart(4, "0")}`;
+  }
+
+  return "-";
 }
 
 function mapHistoryRow(
   row: any,
-  itemRows: any[]
+  itemRows: any[],
+  cashierUsername: string
 ): POSHistoryRow {
   const items = itemRows.map(
     (item: any) => ({
@@ -37,8 +58,8 @@ function mapHistoryRow(
 
   return {
     id: row.id,
-    deliveryReceiptNumber:
-      `DR-${String(row.delivery_receipt_sequence).padStart(4, "0")}`,
+    deliveryReceiptNumber: getDisplayReceiptNumber(row),
+    cashierUsername,
     customerName: row.customer_name ?? "",
     customerAddress: row.customer_address ?? "",
     customerPhone: row.customer_phone ?? "",
@@ -231,7 +252,7 @@ export default function POSHistory() {
       const { data, error } = await supabase
         .from("pos_transactions")
         .select(
-          "id, delivery_receipt_sequence, customer_name, customer_address, customer_phone, subtotal, amount_received, change_amount, payment_method, transaction_status, created_at"
+          "id, delivery_receipt_sequence, area_code, receipt_number, created_by, customer_name, customer_address, customer_phone, subtotal, amount_received, change_amount, payment_method, transaction_status, created_at"
         )
         .order("created_at", {
           ascending: false,
@@ -279,6 +300,56 @@ export default function POSHistory() {
         itemRows = loadedItems ?? [];
       }
 
+      const currentUsername =
+        user.user_metadata?.username ||
+        user.user_metadata?.user_name ||
+        user.email?.split("@")[0] ||
+        "Unknown cashier";
+
+      const cashierUserIds = Array.from(
+        new Set(
+          (data ?? [])
+            .map((row) => row.created_by)
+            .filter(Boolean)
+        )
+      );
+
+      const cashierUsernameById =
+        new Map<string, string>();
+
+      if (cashierUserIds.length > 0) {
+        const {
+          data: cashierRows,
+          error: cashierError,
+        } = await supabase.rpc(
+          "get_cashier_usernames",
+          {
+            p_user_ids: cashierUserIds,
+          }
+        );
+
+        if (cashierError) {
+          console.error(
+            "Unable to resolve cashier usernames:",
+            cashierError
+          );
+        } else {
+          (cashierRows ?? []).forEach(
+            (cashier: any) => {
+              if (
+                cashier.user_id &&
+                cashier.username
+              ) {
+                cashierUsernameById.set(
+                  cashier.user_id,
+                  cashier.username
+                );
+              }
+            }
+          );
+        }
+      }
+
       setTransactions(
         (data ?? []).map((row) =>
           mapHistoryRow(
@@ -286,7 +357,13 @@ export default function POSHistory() {
             itemRows.filter(
               (item) =>
                 item.transaction_id === row.id
-            )
+            ),
+            cashierUsernameById.get(
+              row.created_by
+            ) ||
+              (row.created_by === user.id
+                ? currentUsername
+                : "Unknown cashier")
           )
         )
       );
@@ -315,6 +392,9 @@ export default function POSHistory() {
           .toLowerCase()
           .includes(keyword) ||
         transaction.customerPhone
+          .toLowerCase()
+          .includes(keyword) ||
+        transaction.cashierUsername
           .toLowerCase()
           .includes(keyword);
 
@@ -761,8 +841,9 @@ export default function POSHistory() {
                 <table className="w-full min-w-[880px] border-collapse">
                   <thead className="border-b border-slate-200 bg-slate-50/80">
                     <tr>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">DR Number</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Receipt Number</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Date &amp; Time</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Cashier</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Customer</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Items</th>
                       <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-slate-500">Total Items</th>
@@ -783,6 +864,9 @@ export default function POSHistory() {
                         </td>
                         <td className="px-4 py-4 text-sm text-slate-600">
                           {new Date(transaction.createdAt).toLocaleString("en-PH")}
+                        </td>
+                        <td className="px-4 py-4 text-sm text-slate-900">
+                          {transaction.cashierUsername}
                         </td>
                         <td className="px-4 py-4 text-sm text-slate-900">
                           {transaction.customerName || "Walk-in Customer"}
@@ -917,6 +1001,9 @@ export default function POSHistory() {
               <div className="grid grid-cols-2 gap-2.5 text-sm">
                 <span className="text-slate-500">Delivery Receipt</span>
                 <span className="text-right font-semibold text-emerald-700">{selectedTransaction.deliveryReceiptNumber}</span>
+
+                <span className="text-slate-500">Cashier</span>
+                <span className="text-right text-slate-900">{selectedTransaction.cashierUsername}</span>
 
                 <span className="text-slate-500">Date &amp; Time</span>
                 <span className="text-right text-slate-900">{new Date(selectedTransaction.createdAt).toLocaleString("en-PH")}</span>

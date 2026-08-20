@@ -633,7 +633,7 @@ export default function POS() {
 
       const transactionResult =
         data as {
-          delivery_receipt_number?: string;
+          display_receipt_number?: string;
           subtotal?: number;
           total_amount?: number;
           amount_received?: number;
@@ -643,11 +643,11 @@ export default function POS() {
 
       const receiptNumber =
         transactionResult
-          ?.delivery_receipt_number;
+          ?.display_receipt_number;
 
       if (!receiptNumber) {
         showToast(
-          "Sale completed without a delivery receipt number.",
+          "Sale completed without a receipt number.",
           "error"
         );
 
