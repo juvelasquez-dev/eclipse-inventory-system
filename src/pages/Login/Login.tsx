@@ -44,7 +44,7 @@ export default function Login() {
 
   if (checkingSession) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50">
+      <div className="flex min-h-screen items-center justify-center bg-[#FBF9F5]">
         <p className="text-sm text-slate-500">
           Checking session...
         </p>
@@ -147,45 +147,50 @@ export default function Login() {
   }
 
   return (
-    <div className="flex min-h-screen bg-white">
+    <div className="flex min-h-screen bg-[#FBF9F5]">
 
       {/* Left — Branding Panel */}
-      <div className="relative hidden w-1/2 flex-col justify-between overflow-hidden bg-slate-950 p-12 lg:flex">
+      <div className="relative hidden w-1/2 flex-col justify-between overflow-hidden border-r border-slate-200/70 bg-white p-12 lg:flex">
 
         <div className="pointer-events-none absolute inset-0">
-          <div className="absolute -left-32 -top-32 h-96 w-96 rounded-full bg-emerald-500/20 blur-3xl" />
-          <div className="absolute -bottom-40 -right-20 h-96 w-96 rounded-full bg-emerald-400/10 blur-3xl" />
+          <div className="absolute -left-24 -top-24 h-80 w-80 rounded-full bg-emerald-100/60 blur-3xl" />
+          <div className="absolute -bottom-32 -right-16 h-96 w-96 rounded-full bg-amber-100/50 blur-3xl" />
           <div
-            className="absolute inset-0 opacity-[0.07]"
+            className="absolute inset-0 opacity-[0.04]"
             style={{
               backgroundImage:
-                "linear-gradient(to right, white 1px, transparent 1px), linear-gradient(to bottom, white 1px, transparent 1px)",
-              backgroundSize: "48px 48px",
+                "radial-gradient(#0f172a 1px, transparent 1px)",
+              backgroundSize: "28px 28px",
             }}
           />
         </div>
 
         <div className="relative flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-400 to-emerald-600 text-lg font-bold text-white shadow-lg shadow-emerald-500/30">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-600 to-emerald-700 text-lg font-bold text-white shadow-sm shadow-emerald-900/20">
             E
           </div>
-          <span className="text-lg font-semibold tracking-tight text-white">
-            Eclipse
-          </span>
+          <div>
+            <span className="block text-lg font-bold leading-tight tracking-tight text-slate-900">
+              Eclipse
+            </span>
+            <span className="block text-xs leading-tight text-slate-500">
+              Food Trading OPC
+            </span>
+          </div>
         </div>
 
         <div className="relative max-w-md">
-          <span className="inline-flex items-center rounded-full bg-emerald-400/10 px-3 py-1 text-xs font-semibold text-emerald-300 ring-1 ring-inset ring-emerald-400/20">
+          <span className="inline-flex items-center rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-200">
             Business Platform
           </span>
 
-          <h1 className="mt-6 text-4xl font-bold leading-tight tracking-tight text-white">
+          <h1 className="mt-6 text-4xl font-bold leading-tight tracking-tight text-slate-900">
             Inventory & distribution,
             <br />
             under one roof.
           </h1>
 
-          <p className="mt-4 text-base leading-relaxed text-slate-400">
+          <p className="mt-4 text-base leading-relaxed text-slate-500">
             Track stock, manage products,
             and oversee every movement
             across your operations from a
@@ -193,7 +198,7 @@ export default function Login() {
           </p>
         </div>
 
-        <p className="relative text-xs text-slate-500">
+        <p className="relative text-xs text-slate-400">
           © {new Date().getFullYear()} Eclipse Food Trading OPC.
           All rights reserved.
         </p>
@@ -206,12 +211,17 @@ export default function Login() {
 
           {/* Mobile-only brand mark */}
           <div className="mb-10 flex items-center gap-3 lg:hidden">
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-700 text-lg font-bold text-white shadow-sm shadow-emerald-900/20">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-600 to-emerald-700 text-lg font-bold text-white shadow-sm shadow-emerald-900/20">
               E
             </div>
-            <span className="text-lg font-semibold tracking-tight text-slate-900">
-              Eclipse
-            </span>
+            <div>
+              <span className="block text-lg font-bold leading-tight tracking-tight text-slate-900">
+                Eclipse
+              </span>
+              <span className="block text-xs leading-tight text-slate-500">
+                Food Trading OPC
+              </span>
+            </div>
           </div>
 
           <h2 className="text-2xl font-bold tracking-tight text-slate-900">

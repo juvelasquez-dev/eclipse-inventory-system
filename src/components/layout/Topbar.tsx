@@ -8,7 +8,10 @@ import { useNavigate } from "react-router-dom";
 
 import { supabase } from "../../lib/supabase";
 
-type TopbarModule = "inventory" | "pos";
+type TopbarModule =
+  | "inventory"
+  | "pos"
+  | "outlets";
 
 interface TopbarProps {
   module: TopbarModule;
@@ -28,7 +31,9 @@ export default function Topbar({
   const title =
     module === "pos"
       ? "Point of Sale"
-      : "Inventory Management";
+      : module === "outlets"
+        ? "Outlet Management"
+        : "Inventory Management";
 
   useEffect(() => {
     async function loadUserIdentity() {

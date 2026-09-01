@@ -21,6 +21,10 @@ import Inventory from "./pages/Inventory/Inventory";
 import History from "./pages/Inventory/History";
 import StockAdjustment from "./pages/Inventory/StockAdjustment";
 
+import Outlets from "./pages/Outlets/Outlets";
+import OutletDashboard from "./pages/Outlets/Dashboard";
+import OutletReports from "./pages/Outlets/Reports";
+
 import { ToastProvider } from "./context/ToastContext";
 import { InventoryProvider } from "./context/InventoryContext";
 
@@ -102,6 +106,28 @@ function App() {
                 <Route
                   path="/pos/history"
                   element={<POSHistory />}
+                />
+              </Route>
+
+              {/* Outlet Management */}
+              <Route
+                element={
+                  <MainLayout module="outlets" />
+                }
+              >
+                <Route
+                  path="/outlets/dashboard"
+                  element={<OutletDashboard />}
+                />
+
+                <Route
+                  path="/outlets"
+                  element={<Outlets />}
+                />
+
+                <Route
+                  path="/outlets/reports"
+                  element={<OutletReports />}
                 />
               </Route>
 

@@ -21,3 +21,18 @@ export interface Transaction {
   date: string;
   remarks?: string;
 }
+
+export type OutletStatus = "Active" | "Inactive";
+
+export interface Outlet {
+  id: string;
+  outletName: string;
+  contactPerson: string;
+  contactNumber: string;
+  completeAddress: string;
+  areaCode: string;
+  tin: string;
+  status: OutletStatus;
+  createdAt?: string;
+  updatedAt?: string;
+}

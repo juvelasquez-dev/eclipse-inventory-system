@@ -7,12 +7,17 @@ import {
   Boxes,
   History,
   ShoppingCart,
+  Store,
+  FileText,
   X,
 } from "lucide-react";
 
 import { NavLink } from "react-router-dom";
 
-type SidebarModule = "inventory" | "pos";
+type SidebarModule =
+  | "inventory"
+  | "pos"
+  | "outlets";
 
 interface MenuItem {
   name: string;
@@ -71,6 +76,24 @@ const posMenuItems: MenuItem[] = [
   },
 ];
 
+const outletsMenuItems: MenuItem[] = [
+  {
+    name: "Dashboard",
+    path: "/outlets/dashboard",
+    icon: LayoutDashboard,
+  },
+  {
+    name: "Outlets Management",
+    path: "/outlets",
+    icon: Store,
+  },
+  {
+    name: "Reports",
+    path: "/outlets/reports",
+    icon: FileText,
+  },
+];
+
 interface SidebarProps {
   module: SidebarModule;
   open: boolean;
@@ -83,18 +106,25 @@ export default function Sidebar({
   onClose,
 }: SidebarProps) {
   const isPOS = module === "pos";
+  const isOutlets = module === "outlets";
 
   const menuItems = isPOS
     ? posMenuItems
-    : inventoryMenuItems;
+    : isOutlets
+      ? outletsMenuItems
+      : inventoryMenuItems;
 
   const systemName = isPOS
     ? "POS System"
-    : "Inventory System";
+    : isOutlets
+      ? "Outlet Management"
+      : "Inventory System";
 
   const footerDescription = isPOS
     ? "Point of Sale"
-    : "Inventory Management";
+    : isOutlets
+      ? "Outlet Management"
+      : "Inventory Management";
 
   return (
     <>
@@ -129,6 +159,8 @@ export default function Sidebar({
             <div className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-white to-slate-200 text-slate-900 shadow-sm shadow-black/20">
               {isPOS ? (
                 <ShoppingCart size={20} />
+              ) : isOutlets ? (
+                <Store size={20} />
               ) : (
                 <Boxes size={20} />
               )}
@@ -173,7 +205,10 @@ export default function Sidebar({
                   onClick={onClose}
                   end={
                     item.path === "/" ||
-                    item.path === "/pos"
+                    item.path === "/pos" ||
+                    item.path === "/outlets" ||
+                    item.path === "/outlets/dashboard" ||
+                    item.path === "/outlets/reports"
                   }
                   className={({ isActive }) =>
                     `group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-150 ${

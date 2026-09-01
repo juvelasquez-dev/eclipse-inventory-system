@@ -10,6 +10,7 @@ import {
 import type {
   Product,
   Transaction,
+  Outlet,
 } from "../types/inventory";
 
 import { getInventory } from "../utils/inventory";
@@ -19,6 +20,8 @@ interface InventoryContextType {
   products: Product[];
 
   transactions: Transaction[];
+
+  outlets: Outlet[];
 
   inventory: (Product & {
     stock: number;
@@ -39,6 +42,29 @@ interface InventoryContextType {
   addTransaction: (
     transaction: Transaction
   ) => Promise<boolean>;
+
+  addOutlet: (
+    outlet: Omit<
+      Outlet,
+      "id" | "createdAt" | "updatedAt"
+    >
+  ) => Promise<{
+    success: boolean;
+    message?: string;
+  }>;
+
+  updateOutlet: (
+    outlet: Outlet
+  ) => Promise<{
+    success: boolean;
+    message?: string;
+  }>;
+
+  deleteOutlet: (
+    id: string
+  ) => Promise<boolean>;
+
+  refreshOutlets: () => Promise<void>;
 }
 
 const InventoryContext =
@@ -83,6 +109,70 @@ function mapTransaction(
   };
 }
 
+/*
+ * Convert Supabase outlet data
+ * from snake_case to frontend camelCase.
+ */
+function mapOutlet(row: any): Outlet {
+  return {
+    id: row.id,
+    outletName: row.outlet_name,
+    contactPerson: row.contact_person,
+    contactNumber: row.contact_number,
+    completeAddress: row.complete_address,
+    areaCode: row.area_code,
+    tin: row.tin ?? "",
+    status: row.status,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function isDuplicateOutlet(
+  existingOutlet: Outlet,
+  candidate: {
+    outletName: string;
+    completeAddress: string;
+  }
+) {
+  return (
+    existingOutlet.outletName
+      .trim()
+      .toLowerCase() ===
+      candidate.outletName
+        .trim()
+        .toLowerCase() &&
+    existingOutlet.completeAddress
+      .trim()
+      .toLowerCase() ===
+      candidate.completeAddress
+        .trim()
+        .toLowerCase()
+  );
+}
+
+function getDuplicateOutletMessage() {
+  return "An outlet with the same name and address already exists.";
+}
+
+function getSupabaseDuplicateMessage(
+  error: { code?: string; message?: string }
+) {
+  const code = error?.code ?? "";
+  const message =
+    error?.message?.toLowerCase() ?? "";
+
+  if (
+    code === "23505" ||
+    message.includes("duplicate") ||
+    message.includes("already exists")
+  ) {
+    return getDuplicateOutletMessage();
+  }
+
+  return "This outlet could not be saved. Please review the information and try again.";
+}
+
 export function InventoryProvider({
   children,
 }: Props) {
@@ -92,11 +182,72 @@ export function InventoryProvider({
   const [transactions, setTransactions] =
     useState<Transaction[]>([]);
 
+  const [outlets, setOutlets] =
+    useState<Outlet[]>([]);
+
+  /*
+   * Load outlets from Supabase.
+   */
+  async function loadOutlets() {
+    const {
+      data: outletData,
+      error: outletError,
+    } = await supabase
+      .from("outlets")
+      .select("*")
+      .order("outlet_name", {
+        ascending: true,
+      });
+
+    if (outletError) {
+      console.error(
+        "Error loading outlets:",
+        outletError
+      );
+      return;
+    }
+
+    setOutlets(
+      (outletData ?? []).map(
+        mapOutlet
+      )
+    );
+  }
+
   /*
    * Load all data from Supabase.
    */
   useEffect(() => {
     async function loadData() {
+      const {
+        data: {
+          session,
+        },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError) {
+        console.error(
+          "Error checking session:",
+          sessionError
+        );
+      }
+
+      if (!session) {
+        console.error(
+          "No active Supabase session found."
+        );
+        return;
+      }
+
+      console.log(
+        "Authenticated user:",
+        session.user.email
+      );
+
+      /*
+       * Load products.
+       */
       const {
         data: productData,
         error: productError,
@@ -118,6 +269,9 @@ export function InventoryProvider({
         );
       }
 
+      /*
+       * Load transactions.
+       */
       const {
         data: transactionData,
         error: transactionError,
@@ -140,6 +294,11 @@ export function InventoryProvider({
           )
         );
       }
+
+      /*
+       * Load outlets.
+       */
+      await loadOutlets();
     }
 
     loadData();
@@ -303,6 +462,213 @@ export function InventoryProvider({
   }
 
   /*
+   * Add outlet.
+   *
+   * Duplicate rule:
+   * An outlet is considered a duplicate only when
+   * both outlet name AND complete address match.
+   *
+   * Contact person, contact number, and TIN
+   * are allowed to be duplicated.
+   */
+  async function addOutlet(
+    outlet: Omit<
+      Outlet,
+      "id" | "createdAt" | "updatedAt"
+    >
+  ): Promise<{
+    success: boolean;
+    message?: string;
+  }> {
+    const duplicateExists =
+      outlets.some((existingOutlet) =>
+        isDuplicateOutlet(existingOutlet, {
+          outletName: outlet.outletName,
+          completeAddress:
+            outlet.completeAddress,
+        })
+      );
+
+    if (duplicateExists) {
+      return {
+        success: false,
+        message: getDuplicateOutletMessage(),
+      };
+    }
+
+    const { data, error } =
+      await supabase
+        .from("outlets")
+        .insert({
+          outlet_name:
+            outlet.outletName,
+          contact_person:
+            outlet.contactPerson,
+          contact_number:
+            outlet.contactNumber,
+          complete_address:
+            outlet.completeAddress,
+          area_code:
+            outlet.areaCode,
+          tin:
+            outlet.tin?.trim() || null,
+          status: outlet.status,
+        })
+        .select()
+        .single();
+
+    if (error) {
+      console.error(
+        "Error adding outlet:",
+        error
+      );
+
+      return {
+        success: false,
+        message:
+          getSupabaseDuplicateMessage(
+            error
+          ),
+      };
+    }
+
+    setOutlets((prev) =>
+      [...prev, mapOutlet(data)].sort(
+        (a, b) =>
+          a.outletName.localeCompare(
+            b.outletName
+          )
+      )
+    );
+
+    return { success: true };
+  }
+
+  /*
+   * Update outlet.
+   *
+   * Duplicate rule:
+   * An outlet is considered a duplicate only when
+   * another outlet has the same outlet name AND
+   * complete address.
+   */
+  async function updateOutlet(
+    updatedOutlet: Outlet
+  ): Promise<{
+    success: boolean;
+    message?: string;
+  }> {
+    const duplicateExists =
+      outlets.some(
+        (outlet) =>
+          outlet.id !== updatedOutlet.id &&
+          isDuplicateOutlet(outlet, {
+            outletName:
+              updatedOutlet.outletName,
+            completeAddress:
+              updatedOutlet.completeAddress,
+          })
+      );
+
+    if (duplicateExists) {
+      return {
+        success: false,
+        message: getDuplicateOutletMessage(),
+      };
+    }
+
+    const { data, error } =
+      await supabase
+        .from("outlets")
+        .update({
+          outlet_name:
+            updatedOutlet.outletName,
+          contact_person:
+            updatedOutlet.contactPerson,
+          contact_number:
+            updatedOutlet.contactNumber,
+          complete_address:
+            updatedOutlet.completeAddress,
+          area_code:
+            updatedOutlet.areaCode,
+          tin:
+            updatedOutlet.tin?.trim() ||
+            null,
+          status:
+            updatedOutlet.status,
+        })
+        .eq(
+          "id",
+          updatedOutlet.id
+        )
+        .select()
+        .single();
+
+    if (error) {
+      console.error(
+        "Error updating outlet:",
+        error
+      );
+
+      return {
+        success: false,
+        message:
+          getSupabaseDuplicateMessage(
+            error
+          ),
+      };
+    }
+
+    setOutlets((prev) =>
+      prev
+        .map((outlet) =>
+          outlet.id === updatedOutlet.id
+            ? mapOutlet(data)
+            : outlet
+        )
+        .sort(
+          (a, b) =>
+            a.outletName.localeCompare(
+              b.outletName
+            )
+        )
+    );
+
+    return { success: true };
+  }
+
+  /*
+   * Delete outlet.
+   */
+  async function deleteOutlet(
+    id: string
+  ): Promise<boolean> {
+    const { error } =
+      await supabase
+        .from("outlets")
+        .delete()
+        .eq("id", id);
+
+    if (error) {
+      console.error(
+        "Error deleting outlet:",
+        error
+      );
+
+      return false;
+    }
+
+    setOutlets((prev) =>
+      prev.filter(
+        (outlet) =>
+          outlet.id !== id
+      )
+    );
+
+    return true;
+  }
+
+  /*
    * Add transaction.
    */
   async function addTransaction(
@@ -358,12 +724,20 @@ export function InventoryProvider({
       value={{
         products,
         transactions,
+        outlets,
         inventory,
 
         addProduct,
         updateProduct,
         deleteProduct,
         addTransaction,
+
+        addOutlet,
+        updateOutlet,
+        deleteOutlet,
+
+        refreshOutlets:
+          loadOutlets,
       }}
     >
       {children}

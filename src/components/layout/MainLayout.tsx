@@ -4,7 +4,10 @@ import { Outlet } from "react-router-dom";
 import Sidebar from "./Sidebar";
 import Topbar from "./Topbar";
 
-type MainModule = "inventory" | "pos";
+type MainModule =
+  | "inventory"
+  | "pos"
+  | "outlets";
 
 interface MainLayoutProps {
   module: MainModule;
