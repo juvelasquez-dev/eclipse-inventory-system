@@ -122,6 +122,8 @@ function mapOutlet(row: any): Outlet {
     completeAddress: row.complete_address,
     areaCode: row.area_code,
     tin: row.tin ?? "",
+    idType: row.id_type ?? "",
+    idNumber: row.id_number ?? "",
     status: row.status,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -155,8 +157,13 @@ function getDuplicateOutletMessage() {
   return "An outlet with the same name and address already exists.";
 }
 
-function getSupabaseDuplicateMessage(
-  error: { code?: string; message?: string }
+function getSupabaseOutletErrorMessage(
+  error: {
+    code?: string;
+    message?: string;
+    details?: string;
+    hint?: string;
+  }
 ) {
   const code = error?.code ?? "";
   const message =
@@ -170,7 +177,10 @@ function getSupabaseDuplicateMessage(
     return getDuplicateOutletMessage();
   }
 
-  return "This outlet could not be saved. Please review the information and try again.";
+  return (
+    error?.message ||
+    "This outlet could not be saved. Please review the information and try again."
+  );
 }
 
 export function InventoryProvider({
@@ -208,9 +218,7 @@ export function InventoryProvider({
     }
 
     setOutlets(
-      (outletData ?? []).map(
-        mapOutlet
-      )
+      (outletData ?? []).map(mapOutlet)
     );
   }
 
@@ -263,9 +271,7 @@ export function InventoryProvider({
         );
       } else {
         setProducts(
-          (productData ?? []).map(
-            mapProduct
-          )
+          (productData ?? []).map(mapProduct)
         );
       }
 
@@ -419,9 +425,6 @@ export function InventoryProvider({
 
   /*
    * Delete product.
-   *
-   * Products with transaction history
-   * cannot be deleted.
    */
   async function deleteProduct(
     id: string
@@ -463,13 +466,6 @@ export function InventoryProvider({
 
   /*
    * Add outlet.
-   *
-   * Duplicate rule:
-   * An outlet is considered a duplicate only when
-   * both outlet name AND complete address match.
-   *
-   * Contact person, contact number, and TIN
-   * are allowed to be duplicated.
    */
   async function addOutlet(
     outlet: Omit<
@@ -512,6 +508,10 @@ export function InventoryProvider({
             outlet.areaCode,
           tin:
             outlet.tin?.trim() || null,
+          id_type:
+            outlet.idType?.trim() || null,
+          id_number:
+            outlet.idNumber?.trim() || null,
           status: outlet.status,
         })
         .select()
@@ -520,13 +520,33 @@ export function InventoryProvider({
     if (error) {
       console.error(
         "Error adding outlet:",
-        error
+        JSON.stringify(error, null, 2)
+      );
+
+      console.error(
+        "Error code:",
+        error.code
+      );
+
+      console.error(
+        "Error message:",
+        error.message
+      );
+
+      console.error(
+        "Error details:",
+        error.details
+      );
+
+      console.error(
+        "Error hint:",
+        error.hint
       );
 
       return {
         success: false,
         message:
-          getSupabaseDuplicateMessage(
+          getSupabaseOutletErrorMessage(
             error
           ),
       };
@@ -541,16 +561,13 @@ export function InventoryProvider({
       )
     );
 
-    return { success: true };
+    return {
+      success: true,
+    };
   }
 
   /*
    * Update outlet.
-   *
-   * Duplicate rule:
-   * An outlet is considered a duplicate only when
-   * another outlet has the same outlet name AND
-   * complete address.
    */
   async function updateOutlet(
     updatedOutlet: Outlet
@@ -594,6 +611,12 @@ export function InventoryProvider({
           tin:
             updatedOutlet.tin?.trim() ||
             null,
+          id_type:
+            updatedOutlet.idType?.trim() ||
+            null,
+          id_number:
+            updatedOutlet.idNumber?.trim() ||
+            null,
           status:
             updatedOutlet.status,
         })
@@ -607,13 +630,33 @@ export function InventoryProvider({
     if (error) {
       console.error(
         "Error updating outlet:",
-        error
+        JSON.stringify(error, null, 2)
+      );
+
+      console.error(
+        "Error code:",
+        error.code
+      );
+
+      console.error(
+        "Error message:",
+        error.message
+      );
+
+      console.error(
+        "Error details:",
+        error.details
+      );
+
+      console.error(
+        "Error hint:",
+        error.hint
       );
 
       return {
         success: false,
         message:
-          getSupabaseDuplicateMessage(
+          getSupabaseOutletErrorMessage(
             error
           ),
       };
@@ -634,7 +677,9 @@ export function InventoryProvider({
         )
     );
 
-    return { success: true };
+    return {
+      success: true,
+    };
   }
 
   /*

@@ -3,11 +3,13 @@ import type { InputHTMLAttributes } from "react";
 interface InputProps
   extends InputHTMLAttributes<HTMLInputElement> {
   label: string;
+  helperText?: string;
 }
 
 export default function Input({
   label,
   id,
+  helperText,
   ...props
 }: InputProps) {
   return (
@@ -47,6 +49,12 @@ export default function Input({
           disabled:hover:border-slate-300
         "
       />
+
+      {helperText && (
+        <p className="text-xs leading-5 text-slate-500">
+          {helperText}
+        </p>
+      )}
     </div>
   );
 }

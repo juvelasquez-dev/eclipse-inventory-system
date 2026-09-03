@@ -147,26 +147,30 @@ export default function Login() {
   }
 
   return (
-    <div className="flex min-h-screen bg-[#FBF9F5]">
+    <div className="relative flex min-h-screen overflow-hidden bg-[#FBF9F4]">
+
+      {/* ===================================================
+          DECORATIVE BACKGROUND LAYER
+      =================================================== */}
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="absolute -left-40 -top-40 h-80 w-80 rounded-full bg-gradient-to-br from-emerald-200/40 via-emerald-100/30 to-transparent blur-3xl" />
+        <div className="absolute -right-32 top-1/3 h-96 w-96 rounded-full bg-gradient-to-bl from-amber-200/40 via-orange-100/30 to-transparent blur-3xl" />
+        <div className="absolute -bottom-40 right-1/4 h-80 w-80 rounded-full bg-gradient-to-tr from-fuchsia-200/30 via-purple-100/20 to-transparent blur-3xl" />
+        <div
+          className="absolute inset-0 opacity-[0.04]"
+          style={{
+            backgroundImage:
+              "radial-gradient(#0f172a 1px, transparent 1px)",
+            backgroundSize: "26px 26px",
+          }}
+        />
+      </div>
 
       {/* Left — Branding Panel */}
-      <div className="relative hidden w-1/2 flex-col justify-between overflow-hidden border-r border-slate-200/70 bg-white p-12 lg:flex">
-
-        <div className="pointer-events-none absolute inset-0">
-          <div className="absolute -left-24 -top-24 h-80 w-80 rounded-full bg-emerald-100/60 blur-3xl" />
-          <div className="absolute -bottom-32 -right-16 h-96 w-96 rounded-full bg-amber-100/50 blur-3xl" />
-          <div
-            className="absolute inset-0 opacity-[0.04]"
-            style={{
-              backgroundImage:
-                "radial-gradient(#0f172a 1px, transparent 1px)",
-              backgroundSize: "28px 28px",
-            }}
-          />
-        </div>
+      <div className="relative hidden w-1/2 flex-col justify-between overflow-hidden border-r border-slate-200/70 bg-white/60 p-12 backdrop-blur-sm lg:flex">
 
         <div className="relative flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-600 to-emerald-700 text-lg font-bold text-white shadow-sm shadow-emerald-900/20">
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-600 to-emerald-700 text-lg font-bold text-white shadow-md shadow-emerald-900/20">
             E
           </div>
           <div>
@@ -180,14 +184,14 @@ export default function Login() {
         </div>
 
         <div className="relative max-w-md">
-          <span className="inline-flex items-center rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-200">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-white px-3.5 py-1.5 text-xs font-semibold text-emerald-700 shadow-sm ring-1 ring-inset ring-emerald-200">
             Business Platform
           </span>
 
           <h1 className="mt-6 text-4xl font-bold leading-tight tracking-tight text-slate-900">
             Inventory & distribution,
             <br />
-            under one roof.
+            <span className="bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-500 bg-clip-text text-transparent">under one roof.</span>
           </h1>
 
           <p className="mt-4 text-base leading-relaxed text-slate-500">
@@ -198,20 +202,19 @@ export default function Login() {
           </p>
         </div>
 
-        <p className="relative text-xs text-slate-400">
-          © {new Date().getFullYear()} Eclipse Food Trading OPC.
-          All rights reserved.
+        <p className="relative text-xs text-slate-500">
+          © {new Date().getFullYear()} Eclipse Food Trading OPC. All rights reserved.
         </p>
       </div>
 
       {/* Right — Form Panel */}
-      <div className="flex w-full flex-col justify-center px-6 py-12 sm:px-12 lg:w-1/2 lg:px-20 xl:px-24">
+      <div className="relative flex w-full flex-col justify-center px-6 py-12 sm:px-12 lg:w-1/2 lg:px-20 xl:px-24">
 
         <div className="mx-auto w-full max-w-sm">
 
           {/* Mobile-only brand mark */}
           <div className="mb-10 flex items-center gap-3 lg:hidden">
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-600 to-emerald-700 text-lg font-bold text-white shadow-sm shadow-emerald-900/20">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-600 to-emerald-700 text-lg font-bold text-white shadow-md shadow-emerald-900/20">
               E
             </div>
             <div>
@@ -224,13 +227,12 @@ export default function Login() {
             </div>
           </div>
 
-          <h2 className="text-2xl font-bold tracking-tight text-slate-900">
+          <h2 className="text-3xl font-bold tracking-tight text-slate-900">
             Welcome back
           </h2>
 
-          <p className="mt-2 text-sm text-slate-500">
-            Sign in with your account to
-            access the system.
+          <p className="mt-2 text-sm text-slate-600">
+            Sign in with your account to access Eclipse.
           </p>
 
           {error && (
@@ -287,7 +289,7 @@ export default function Login() {
             <Button
               type="submit"
               disabled={loading}
-              className="w-full !py-3"
+              className="w-full !py-3 !bg-gradient-to-b !from-emerald-600 !to-emerald-700 !shadow-md !shadow-emerald-900/20 hover:!from-emerald-700 hover:!to-emerald-800 hover:!shadow-lg hover:!shadow-emerald-900/30"
             >
               {loading
                 ? "Signing in..."
@@ -296,9 +298,8 @@ export default function Login() {
 
           </form>
 
-          <p className="mt-10 text-center text-xs text-slate-400 lg:text-left">
-            Eclipse Food Trading OPC — Internal
-            use only.
+          <p className="mt-10 text-center text-xs text-slate-500 lg:text-left">
+            Eclipse Food Trading OPC — Internal use only.
           </p>
 
         </div>

@@ -94,9 +94,9 @@ export default function Topbar({
   }
 
   return (
-    <header className="flex h-16 items-center justify-between border-b border-slate-200 bg-white px-3 sm:px-4 md:px-6">
+    <header className="flex h-16 items-center justify-between border-b border-slate-200/70 bg-white/70 px-3 shadow-sm backdrop-blur-sm sm:px-4 md:px-6">
       {/* Left side */}
-      <div className="flex min-w-0 items-center gap-3">
+      <div className="flex min-w-0 items-center gap-2 sm:gap-3">
         {/* Mobile menu button */}
         <button
           type="button"
@@ -111,28 +111,29 @@ export default function Topbar({
         <button
           type="button"
           onClick={() => navigate("/system")}
-          className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-slate-200 px-2.5 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-50 hover:text-slate-900 sm:px-3"
+          className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-slate-200/80 bg-white px-2.5 py-2 text-sm font-medium text-slate-700 shadow-sm transition duration-200 hover:border-emerald-200 hover:bg-emerald-50/50 hover:text-emerald-700 sm:px-3"
         >
           <ArrowLeft size={16} />
-          <span>Back to Systems</span>
+          <span className="hidden sm:inline">Back to Systems</span>
+          <span className="inline sm:hidden">Back</span>
         </button>
 
         {/* Module title */}
-        <h2 className="truncate font-semibold text-slate-700">
+        <h2 className="truncate text-sm font-semibold text-slate-900 sm:text-base">
           {title}
         </h2>
       </div>
 
       {/* Right side */}
-      <div className="flex shrink-0 items-center gap-3">
+      <div className="flex shrink-0 items-center gap-2 sm:gap-3">
         {/* User identity */}
-        <span className="max-w-[9rem] truncate text-xs text-slate-500 sm:max-w-[16rem] sm:text-sm">
-          <span aria-hidden="true">&#128100;</span>{" "}
-          {username}
+        <span className="max-w-[9rem] truncate text-xs text-slate-600 sm:max-w-[16rem] sm:text-sm">
+          <span aria-hidden="true">👤</span>{" "}
+          <span className="font-medium">{username}</span>
           {areaCode && (
             <>
-              <span className="mx-1.5 text-slate-300">•</span>
-              {areaCode}
+              <span className="mx-1 text-slate-300">•</span>
+              <span className="text-slate-500">{areaCode}</span>
             </>
           )}
         </span>
@@ -141,7 +142,7 @@ export default function Topbar({
         <button
           type="button"
           onClick={handleLogout}
-          className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-50 hover:text-slate-900"
+          className="inline-flex items-center gap-2 rounded-lg border border-slate-200/80 bg-white px-2.5 py-2 text-sm font-medium text-slate-700 shadow-sm transition duration-200 hover:border-red-200 hover:bg-red-50/50 hover:text-red-700 sm:px-3"
         >
           <LogOut size={16} />
 

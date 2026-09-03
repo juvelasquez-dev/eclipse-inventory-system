@@ -93,7 +93,9 @@ export default function Outlets() {
           outlet.contactPerson,
           outlet.contactNumber,
           outlet.completeAddress,
-          outlet.tin,
+          outlet.tin ?? "",
+          outlet.idType ?? "",
+          outlet.idNumber ?? "",
         ]
           .join(" ")
           .toLowerCase()
@@ -158,36 +160,44 @@ export default function Outlets() {
   ) {
     setFormError("");
 
-    if (selectedOutlet) {
-      const result = await updateOutlet({
-        ...selectedOutlet,
-        ...data,
-      });
+    try {
+      if (selectedOutlet) {
+        const result = await updateOutlet({
+          ...selectedOutlet,
+          ...data,
+        });
 
-      if (!result.success) {
-        setFormError(
-          result.message ||
-            "Failed to update outlet."
-        );
-        return;
-      }
-    } else {
-      const result = await addOutlet({
-        ...data,
-      });
+        if (!result.success) {
+          setFormError(
+            result.message ||
+              "Failed to update outlet."
+          );
+          return;
+        }
+      } else {
+        const result = await addOutlet({
+          ...data,
+        });
 
-      if (!result.success) {
-        setFormError(
-          result.message ||
-            "Failed to add outlet."
-        );
-        return;
+        if (!result.success) {
+          setFormError(
+            result.message ||
+              "Failed to add outlet."
+          );
+          return;
+        }
       }
+
+      setIsModalOpen(false);
+      setSelectedOutlet(undefined);
+      setFormError("");
+    } catch (error) {
+      setFormError(
+        error instanceof Error
+          ? error.message
+          : "Failed to save outlet."
+      );
     }
-
-    setIsModalOpen(false);
-    setSelectedOutlet(undefined);
-    setFormError("");
   }
 
   async function confirmDelete() {
@@ -271,6 +281,8 @@ export default function Outlets() {
         completeAddress: row.completeAddress,
         areaCode: row.areaCode,
         tin: row.tin,
+        idType: row.idType,
+        idNumber: row.idNumber,
         status: parseOutletStatus(row.status),
       });
 

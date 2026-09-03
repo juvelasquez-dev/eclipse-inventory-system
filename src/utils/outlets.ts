@@ -18,6 +18,8 @@ export interface OutletImportRow {
   completeAddress: string;
   areaCode: string;
   tin: string;
+  idType: string;
+  idNumber: string;
   status: string;
 }
 
@@ -36,6 +38,38 @@ const VALID_AREAS = new Set<OutletAreaCode>([
 
 function normalizeText(value: unknown): string {
   return String(value ?? "").trim();
+}
+
+export function validateOutletIdentification({
+  tin,
+  idType,
+  idNumber,
+}: {
+  tin?: string;
+  idType?: string;
+  idNumber?: string;
+}): string {
+  const normalizedTin = normalizeText(tin);
+  const normalizedIdType = normalizeText(idType);
+  const normalizedIdNumber = normalizeText(idNumber);
+
+  if (normalizedTin) {
+    return "";
+  }
+
+  if (!normalizedIdType && !normalizedIdNumber) {
+    return "Please provide a TIN or a valid ID Type and ID Number.";
+  }
+
+  if (!normalizedIdType) {
+    return "ID Type is required when TIN is not provided.";
+  }
+
+  if (!normalizedIdNumber) {
+    return "ID Number is required when TIN is not provided.";
+  }
+
+  return "";
 }
 
 function normalizeStatus(value: unknown): string {
@@ -134,8 +168,17 @@ export function readOutletImportRows(
                 row["area_code"]
             ),
             tin: normalizeText(
-              row["TIN"] ??
-                row["tin"]
+              row["TIN"] ?? row["tin"]
+            ),
+            idType: normalizeText(
+              row["ID Type"] ??
+                row["idType"] ??
+                row["id_type"]
+            ),
+            idNumber: normalizeText(
+              row["ID Number"] ??
+                row["idNumber"] ??
+                row["id_number"]
             ),
             status: normalizeStatus(
               row["Status"] ??
@@ -183,8 +226,9 @@ export function validateOutletImportRows(
     const completeAddress = row.completeAddress.trim();
     const areaCode = row.areaCode.trim().toUpperCase();
     const tin = row.tin.trim();
-    const status =
-      row.status.trim() || "Active";
+    const idType = row.idType.trim();
+    const idNumber = row.idNumber.trim();
+    const status = row.status.trim() || "Active";
 
     if (!outletName) {
       errors.push(
@@ -231,6 +275,16 @@ export function validateOutletImportRows(
       errors.push(
         "Status must be Active or Inactive."
       );
+    }
+
+    const identificationError = validateOutletIdentification({
+      tin,
+      idType,
+      idNumber,
+    });
+
+    if (identificationError) {
+      errors.push(identificationError);
     }
 
     const normalizedStatus =
@@ -284,6 +338,8 @@ export function validateOutletImportRows(
       completeAddress,
       areaCode: areaCode || "",
       tin,
+      idType,
+      idNumber,
       status: normalizedStatus,
       valid: errors.length === 0,
       duplicate: duplicateExists,
@@ -302,6 +358,8 @@ export function exportOutletsWorkbook(
     "Complete Address": outlet.completeAddress,
     "Area Code": outlet.areaCode,
     TIN: outlet.tin || "",
+    "ID Type": outlet.idType || "",
+    "ID Number": outlet.idNumber || "",
     Status: outlet.status,
     "Date Created": outlet.createdAt
       ? new Date(outlet.createdAt).toLocaleDateString("en-PH", {
@@ -347,6 +405,8 @@ export function downloadOutletTemplate() {
       "Complete Address": "123 Main St, Cebu City",
       "Area Code": "IAO",
       TIN: "123-456-789",
+      "ID Type": "Driver's License",
+      "ID Number": "N01-123456",
       Status: "Active",
     },
   ]);
@@ -382,6 +442,11 @@ export function exportOutletReportWorkbook(
     ).length,
     "Outlets Without TIN": outlets.filter(
       (outlet) => !outlet.tin || !outlet.tin.trim()
+    ).length,
+    "Outlets Missing Identification": outlets.filter(
+      (outlet) =>
+        !outlet.tin?.trim() &&
+        !(outlet.idType?.trim() && outlet.idNumber?.trim())
     ).length,
   };
 
@@ -450,6 +515,8 @@ export function exportOutletReportWorkbook(
       "Contact Number": outlet.contactNumber,
       "Complete Address": outlet.completeAddress,
       TIN: outlet.tin || "",
+      "ID Type": outlet.idType || "",
+      "ID Number": outlet.idNumber || "",
     }));
 
   const summarySheet = XLSX.utils.json_to_sheet([
@@ -457,6 +524,7 @@ export function exportOutletReportWorkbook(
     { Metric: "Active Outlets", Value: summary["Active Outlets"] },
     { Metric: "Inactive Outlets", Value: summary["Inactive Outlets"] },
     { Metric: "Outlets Without TIN", Value: summary["Outlets Without TIN"] },
+    { Metric: "Outlets Missing Identification", Value: summary["Outlets Missing Identification"] },
   ]);
 
   const areaSheet = XLSX.utils.json_to_sheet([

@@ -24,6 +24,34 @@ export interface Transaction {
 
 export type OutletStatus = "Active" | "Inactive";
 
+export const OUTLET_ID_TYPE_OPTIONS = [
+  "Select ID Type",
+  "Driver's License",
+  "Passport",
+  "PhilSys ID",
+  "UMID",
+  "SSS ID",
+  "GSIS ID",
+  "PRC ID",
+  "Voter's ID",
+  "Senior Citizen ID",
+  "Company ID",
+  "Other",
+] as const;
+
+export type OutletIdType =
+  | "Driver's License"
+  | "Passport"
+  | "PhilSys ID"
+  | "UMID"
+  | "SSS ID"
+  | "GSIS ID"
+  | "PRC ID"
+  | "Voter's ID"
+  | "Senior Citizen ID"
+  | "Company ID"
+  | "Other";
+
 export interface Outlet {
   id: string;
   outletName: string;
@@ -31,7 +59,9 @@ export interface Outlet {
   contactNumber: string;
   completeAddress: string;
   areaCode: string;
-  tin: string;
+  tin?: string;
+  idType?: string;
+  idNumber?: string;
   status: OutletStatus;
   createdAt?: string;
   updatedAt?: string;

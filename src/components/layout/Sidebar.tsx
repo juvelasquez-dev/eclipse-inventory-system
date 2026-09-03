@@ -126,6 +126,30 @@ export default function Sidebar({
       ? "Outlet Management"
       : "Inventory Management";
 
+  const accentColor = isPOS
+    ? "emerald"
+    : isOutlets
+      ? "fuchsia"
+      : "emerald";
+
+  const getAccentClasses = (isActive: boolean) => {
+    if (accentColor === "fuchsia") {
+      return isActive
+        ? "bg-fuchsia-50 text-fuchsia-700 border border-fuchsia-200"
+        : "text-slate-700 hover:bg-slate-100 hover:text-slate-900";
+    }
+    return isActive
+      ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+      : "text-slate-700 hover:bg-slate-100 hover:text-slate-900";
+  };
+
+  const getAccentIconColor = (isActive: boolean) => {
+    if (accentColor === "fuchsia") {
+      return isActive ? "text-fuchsia-600" : "text-slate-500 group-hover:text-slate-700";
+    }
+    return isActive ? "text-emerald-600" : "text-slate-500 group-hover:text-slate-700";
+  };
+
   return (
     <>
       {/* Mobile overlay */}
@@ -142,8 +166,8 @@ export default function Sidebar({
         className={`
           fixed inset-y-0 left-0 z-50
           flex w-64 flex-col
-          border-r border-slate-800
-          bg-slate-900
+          border-r border-slate-200/70
+          bg-white/80 backdrop-blur-sm
           transition-transform duration-200
           md:static md:z-auto md:translate-x-0
           ${
@@ -154,24 +178,28 @@ export default function Sidebar({
         `}
       >
         {/* Logo / Brand */}
-        <div className="flex items-center justify-between border-b border-slate-800 px-6 py-6">
+        <div className="flex items-center justify-between border-b border-slate-200/70 px-5 py-5">
           <div className="flex items-center gap-3">
-            <div className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-white to-slate-200 text-slate-900 shadow-sm shadow-black/20">
+            <div className={`relative flex h-10 w-10 items-center justify-center rounded-xl text-white shadow-md transition-all duration-300 ${
+              accentColor === "fuchsia"
+                ? "bg-gradient-to-br from-fuchsia-600 to-purple-700 shadow-fuchsia-900/20"
+                : "bg-gradient-to-br from-emerald-600 to-emerald-700 shadow-emerald-900/20"
+            }`}>
               {isPOS ? (
-                <ShoppingCart size={20} />
+                <ShoppingCart size={18} />
               ) : isOutlets ? (
-                <Store size={20} />
+                <Store size={18} />
               ) : (
-                <Boxes size={20} />
+                <Boxes size={18} />
               )}
             </div>
 
             <div>
-              <h1 className="text-sm font-bold tracking-tight text-white">
+              <h1 className="text-sm font-bold tracking-tight text-slate-900">
                 Eclipse
               </h1>
 
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-slate-600">
                 {systemName}
               </p>
             </div>
@@ -182,14 +210,14 @@ export default function Sidebar({
             type="button"
             onClick={onClose}
             aria-label="Close navigation"
-            className="rounded-lg p-2 text-slate-400 transition hover:bg-white/5 hover:text-white md:hidden"
+            className="rounded-lg p-2 text-slate-600 transition hover:bg-slate-100 md:hidden"
           >
             <X size={20} />
           </button>
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 overflow-y-auto px-4 py-6">
+        <nav className="flex-1 overflow-y-auto px-3 py-5">
           <p className="mb-3 px-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
             Main Menu
           </p>
@@ -212,26 +240,16 @@ export default function Sidebar({
                   }
                   className={({ isActive }) =>
                     `group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-150 ${
-                      isActive
-                        ? "bg-white/10 text-white shadow-sm ring-1 ring-inset ring-white/10"
-                        : "text-slate-400 hover:bg-white/5 hover:text-white"
+                      getAccentClasses(isActive)
                     }`
                   }
                 >
                   {({ isActive }) => (
                     <>
-                      {isActive && (
-                        <span className="absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-white" />
-                      )}
-
                       <Icon
                         size={18}
                         strokeWidth={2}
-                        className={
-                          isActive
-                            ? "text-white"
-                            : "text-slate-500 transition-colors group-hover:text-slate-200"
-                        }
+                        className={getAccentIconColor(isActive)}
                       />
 
                       <span>{item.name}</span>
@@ -244,12 +262,12 @@ export default function Sidebar({
         </nav>
 
         {/* Footer */}
-        <div className="border-t border-slate-800 px-6 py-4">
-          <p className="text-xs font-medium text-slate-400">
+        <div className="border-t border-slate-200/70 px-5 py-4">
+          <p className="text-xs font-medium text-slate-700">
             Eclipse {systemName}
           </p>
 
-          <p className="mt-1 text-[11px] text-slate-500">
+          <p className="mt-1 text-[11px] text-slate-600">
             {footerDescription}
           </p>
         </div>
