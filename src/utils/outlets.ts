@@ -14,6 +14,7 @@ export interface OutletImportRow {
   rowNumber: number;
   outletName: string;
   contactPerson: string;
+  degicNumber: string;
   contactNumber: string;
   completeAddress: string;
   areaCode: string;
@@ -152,6 +153,11 @@ export function readOutletImportRows(
                 row["contactPerson"] ??
                 row["contact_person"]
             ),
+            degicNumber: normalizeText(
+              row["DEGIC Number"] ??
+                row["degicNumber"] ??
+                row["degic_number"]
+            ),
             contactNumber: normalizeText(
               row["Contact Number"] ??
                 row["contactNumber"] ??
@@ -222,6 +228,7 @@ export function validateOutletImportRows(
 
     const outletName = row.outletName.trim();
     const contactPerson = row.contactPerson.trim();
+    const degicNumber = row.degicNumber.trim();
     const contactNumber = row.contactNumber.trim();
     const completeAddress = row.completeAddress.trim();
     const areaCode = row.areaCode.trim().toUpperCase();
@@ -334,6 +341,7 @@ export function validateOutletImportRows(
       rowNumber: row.rowNumber,
       outletName,
       contactPerson,
+      degicNumber,
       contactNumber,
       completeAddress,
       areaCode: areaCode || "",
@@ -354,6 +362,7 @@ export function exportOutletsWorkbook(
   const rows = outlets.map((outlet) => ({
     "Outlet Name": outlet.outletName,
     "Contact Person": outlet.contactPerson,
+    "DEGIC Number": outlet.degicNumber || "",
     "Contact Number": outlet.contactNumber,
     "Complete Address": outlet.completeAddress,
     "Area Code": outlet.areaCode,
@@ -401,6 +410,7 @@ export function downloadOutletTemplate() {
     {
       "Outlet Name": "Sample Outlet",
       "Contact Person": "Juan Dela Cruz",
+      "DEGIC Number": "DEGIC-0001",
       "Contact Number": "09171234567",
       "Complete Address": "123 Main St, Cebu City",
       "Area Code": "IAO",

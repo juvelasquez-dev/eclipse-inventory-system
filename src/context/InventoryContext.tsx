@@ -118,6 +118,7 @@ function mapOutlet(row: any): Outlet {
     id: row.id,
     outletName: row.outlet_name,
     contactPerson: row.contact_person,
+    degicNumber: row.degic_number ?? "",
     contactNumber: row.contact_number,
     completeAddress: row.complete_address,
     areaCode: row.area_code,
@@ -500,6 +501,8 @@ export function InventoryProvider({
             outlet.outletName,
           contact_person:
             outlet.contactPerson,
+          degic_number:
+            outlet.degicNumber?.trim() || null,
           contact_number:
             outlet.contactNumber,
           complete_address:
@@ -602,6 +605,8 @@ export function InventoryProvider({
             updatedOutlet.outletName,
           contact_person:
             updatedOutlet.contactPerson,
+          degic_number:
+            updatedOutlet.degicNumber?.trim() || null,
           contact_number:
             updatedOutlet.contactNumber,
           complete_address:

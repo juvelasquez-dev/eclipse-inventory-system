@@ -56,6 +56,7 @@ export interface Outlet {
   id: string;
   outletName: string;
   contactPerson: string;
+  degicNumber: string;
   contactNumber: string;
   completeAddress: string;
   areaCode: string;

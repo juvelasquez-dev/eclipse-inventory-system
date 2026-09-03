@@ -45,6 +45,10 @@ export default function OutletTable({
               </th>
 
               <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                DEGIC Number
+              </th>
+
+              <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                 Contact Number
               </th>
 
@@ -84,6 +88,10 @@ export default function OutletTable({
 
                   <td className="px-4 py-3.5 text-sm text-slate-600">
                     {outlet.contactPerson}
+                  </td>
+
+                  <td className="px-4 py-3.5 text-sm text-slate-600">
+                    {outlet.degicNumber || "-"}
                   </td>
 
                   <td className="px-4 py-3.5 text-sm text-slate-600">
@@ -141,7 +149,7 @@ export default function OutletTable({
             {outlets.length === 0 && (
               <tr>
                 <td
-                  colSpan={7}
+                  colSpan={8}
                   className="px-4 py-10 text-center text-sm text-slate-500"
                 >
                   No outlets found.

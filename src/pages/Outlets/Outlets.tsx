@@ -91,6 +91,7 @@ export default function Outlets() {
         [
           outlet.outletName,
           outlet.contactPerson,
+          outlet.degicNumber,
           outlet.contactNumber,
           outlet.completeAddress,
           outlet.tin ?? "",
@@ -277,6 +278,7 @@ export default function Outlets() {
       const result = await addOutlet({
         outletName: row.outletName,
         contactPerson: row.contactPerson,
+        degicNumber: row.degicNumber,
         contactNumber: row.contactNumber,
         completeAddress: row.completeAddress,
         areaCode: row.areaCode,

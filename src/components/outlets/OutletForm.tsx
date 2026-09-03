@@ -16,6 +16,7 @@ import {
 export interface OutletFormData {
   outletName: string;
   contactPerson: string;
+  degicNumber: string;
   contactNumber: string;
   completeAddress: string;
   areaCode: string;
@@ -47,6 +48,11 @@ export default function OutletForm({
   const [contactPerson, setContactPerson] =
     useState(
       initialValues?.contactPerson ?? ""
+    );
+
+  const [degicNumber, setDegicNumber] =
+    useState(
+      initialValues?.degicNumber ?? ""
     );
 
   const [contactNumber, setContactNumber] =
@@ -130,6 +136,7 @@ export default function OutletForm({
     onSubmit({
       outletName: outletName.trim(),
       contactPerson: contactPerson.trim(),
+      degicNumber: degicNumber.trim(),
       contactNumber: contactNumber.trim(),
       completeAddress:
         completeAddress.trim(),
@@ -180,6 +187,17 @@ export default function OutletForm({
                 onClearError?.();
               }}
               placeholder="Enter contact person"
+            />
+
+            <Input
+              label="DEGIC Number"
+              value={degicNumber}
+              onChange={(e) => {
+                setDegicNumber(e.target.value);
+                setError("");
+                onClearError?.();
+              }}
+              placeholder="Enter DEGIC number"
             />
 
             <Input
