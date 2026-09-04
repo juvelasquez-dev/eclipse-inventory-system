@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Download,
   FileSpreadsheet,
@@ -8,6 +8,8 @@ import {
   MapPin,
   ListFilter,
   Upload,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 
 import Button from "../../components/ui/Button";
@@ -59,6 +61,12 @@ export default function Outlets() {
 
   const [statusFilter, setStatusFilter] =
     useState("ALL");
+
+  const [currentPage, setCurrentPage] =
+    useState(1);
+
+  const [pageSize, setPageSize] =
+    useState(10);
 
   const [isModalOpen, setIsModalOpen] =
     useState(false);
@@ -118,6 +126,27 @@ export default function Outlets() {
     });
   }, [outlets, search, areaFilter, statusFilter]);
 
+  const totalPages = Math.max(
+    1,
+    Math.ceil(filteredOutlets.length / pageSize)
+  );
+
+  const paginatedOutlets = useMemo(() => {
+    const startIndex =
+      (currentPage - 1) * pageSize;
+
+    return filteredOutlets.slice(
+      startIndex,
+      startIndex + pageSize
+    );
+  }, [filteredOutlets, currentPage, pageSize]);
+
+  useEffect(() => {
+    setCurrentPage((page) =>
+      Math.min(page, totalPages)
+    );
+  }, [totalPages]);
+
   /*
    * Summary figures derived from the
    * existing outlets/filteredOutlets data.
@@ -135,8 +164,23 @@ export default function Outlets() {
 
   const hasSearch = search.trim() !== "";
 
+  const pageNumbers = Array.from(
+    { length: totalPages },
+    (_, index) => index + 1
+  );
+
+  const showingStart =
+    filteredOutlets.length === 0
+      ? 0
+      : (currentPage - 1) * pageSize + 1;
+  const showingEnd = Math.min(
+    currentPage * pageSize,
+    filteredOutlets.length
+  );
+
   function clearSearch() {
     setSearch("");
+    setCurrentPage(1);
   }
 
   function handleAdd() {
@@ -476,9 +520,10 @@ export default function Outlets() {
                 <input
                   type="text"
                   value={search}
-                  onChange={(e) =>
-                    setSearch(e.target.value)
-                  }
+                  onChange={(e) => {
+                    setSearch(e.target.value);
+                    setCurrentPage(1);
+                  }}
                   placeholder="Search outlets by name, contact, address..."
                   className="w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-900 shadow-sm outline-none transition-all duration-150 placeholder:text-slate-400 hover:border-slate-400 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100"
                 />
@@ -488,9 +533,10 @@ export default function Outlets() {
                 <Select
                   label="Area"
                   value={areaFilter}
-                  onChange={(e) =>
-                    setAreaFilter(e.target.value)
-                  }
+                  onChange={(e) => {
+                    setAreaFilter(e.target.value);
+                    setCurrentPage(1);
+                  }}
                   options={[
                     { label: "All Areas", value: "ALL" },
                     { label: "IAO", value: "IAO" },
@@ -502,9 +548,10 @@ export default function Outlets() {
                 <Select
                   label="Status"
                   value={statusFilter}
-                  onChange={(e) =>
-                    setStatusFilter(e.target.value)
-                  }
+                  onChange={(e) => {
+                    setStatusFilter(e.target.value);
+                    setCurrentPage(1);
+                  }}
                   options={[
                     { label: "All Status", value: "ALL" },
                     { label: "Active", value: "Active" },
@@ -565,11 +612,74 @@ export default function Outlets() {
               </button>
             </div>
           ) : (
-            <OutletTable
-              outlets={filteredOutlets}
-              onEdit={handleEdit}
-              onDelete={handleDelete}
-            />
+            <>
+              <OutletTable
+                outlets={paginatedOutlets}
+                onEdit={handleEdit}
+                onDelete={handleDelete}
+              />
+
+              <div className="flex flex-col gap-3 border-t border-slate-100 pt-4 text-sm sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-slate-500">
+                  Showing {showingStart}–{showingEnd} of {filteredOutlets.length} outlets
+                </p>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <Select
+                    label="Per page"
+                    value={String(pageSize)}
+                    onChange={(e) => {
+                      setPageSize(Number(e.target.value));
+                      setCurrentPage(1);
+                    }}
+                    options={[
+                      { label: "10 / page", value: "10" },
+                      { label: "20 / page", value: "20" },
+                      { label: "50 / page", value: "50" },
+                    ]}
+                  />
+
+                  <div className="flex flex-wrap items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setCurrentPage((page) => page - 1)}
+                      disabled={currentPage === 1}
+                      aria-label="Previous page"
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600 transition hover:border-emerald-300 hover:text-emerald-700 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      <ChevronLeft size={16} />
+                    </button>
+
+                    {totalPages > 1 && pageNumbers.map((page) => (
+                        <button
+                          key={page}
+                          type="button"
+                          onClick={() => setCurrentPage(page)}
+                          aria-label={`Go to page ${page}`}
+                          aria-current={currentPage === page ? "page" : undefined}
+                          className={`inline-flex h-9 min-w-9 items-center justify-center rounded-lg border px-2 text-sm font-medium transition ${
+                            currentPage === page
+                              ? "border-emerald-600 bg-emerald-600 text-white"
+                              : "border-slate-200 text-slate-600 hover:border-emerald-300 hover:text-emerald-700"
+                          }`}
+                        >
+                          {page}
+                        </button>
+                    ))}
+
+                    <button
+                      type="button"
+                      onClick={() => setCurrentPage((page) => page + 1)}
+                      disabled={currentPage === totalPages}
+                      aria-label="Next page"
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600 transition hover:border-emerald-300 hover:text-emerald-700 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      <ChevronRight size={16} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </>
           )}
 
         </div>
