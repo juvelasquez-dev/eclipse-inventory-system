@@ -441,6 +441,7 @@ export default function Products() {
               editingProduct ?? undefined
             }
             onSubmit={handleSubmit}
+            products={products}
           />
         </Modal>
 

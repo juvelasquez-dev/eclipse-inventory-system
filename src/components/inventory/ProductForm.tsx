@@ -6,7 +6,10 @@ import Select from "../ui/Select";
 
 import { categories } from "../../mock/categories";
 import { flavorsByCategory } from "../../mock/flavors";
-import { generateProductCode } from "../../utils/productCode";
+import {
+  findExistingProduct,
+  deriveProductCodeAndName,
+} from "../../utils/productCode";
 
 import {
   loadCustomFlavors,
@@ -45,11 +48,13 @@ export interface ProductFormData {
 interface ProductFormProps {
   initialValues?: Product;
   onSubmit: (data: ProductFormData) => void;
+  products?: Product[];
 }
 
 export default function ProductForm({
   initialValues,
   onSubmit,
+  products = [],
 }: ProductFormProps) {
   const [category, setCategory] = useState(
     initialValues?.category ?? ""
@@ -109,18 +114,31 @@ export default function ProductForm({
     ])
   );
 
-  const productName =
-    flavor && category
-      ? `${flavor.trim()} ${category}`
-      : "";
+  // Look for existing product matching category + flavor
+  const existingProduct = findExistingProduct(
+    category,
+    flavor,
+    products
+  );
 
-  const generatedCode =
-    category && flavor.trim()
-      ? generateProductCode(
-          category,
-          flavor.trim()
-        )
-      : "";
+  // Determine product code and name
+  let generatedCode = "";
+  let productName = "";
+
+  if (existingProduct) {
+    // Use exact existing product code and name
+    generatedCode = existingProduct.code;
+    productName = existingProduct.name;
+  } else if (category && flavor.trim()) {
+    // Derive format from existing products in this category
+    const derived = deriveProductCodeAndName(
+      category,
+      flavor.trim(),
+      products
+    );
+    generatedCode = derived.code;
+    productName = derived.name;
+  }
 
   function handleCategoryChange(
     value: string
@@ -166,6 +184,14 @@ export default function ProductForm({
 
     if (!cleanFlavor) {
       setError("Flavor is required.");
+      return;
+    }
+
+    // Check if this product already exists
+    if (existingProduct) {
+      setError(
+        `This product already exists: ${existingProduct.code} / ${existingProduct.name}`
+      );
       return;
     }
 
@@ -246,7 +272,7 @@ export default function ProductForm({
 
     onSubmit({
       code: generatedCode,
-      name: `${cleanFlavor} ${category}`,
+      name: productName,
       category,
       unit,
       price,
