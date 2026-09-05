@@ -4,12 +4,13 @@ import { createPortal } from "react-dom";
 import Button from "../../components/ui/Button";
 import Input from "../../components/ui/Input";
 import Select from "../../components/ui/Select";
+import CustomerOutletSearch from "../../components/pos/CustomerOutletSearch";
 
 import { useToast } from "../../context/ToastContext";
 import { useInventory } from "../../hooks/useInventory";
 import { supabase } from "../../lib/supabase";
 
-import type { Product } from "../../types/inventory";
+import type { Outlet, Product } from "../../types/inventory";
 
 interface CartItem {
   product: Product;
@@ -54,7 +55,7 @@ const categoryOrder = [
 ];
 
 export default function POS() {
-  const { products, inventory } = useInventory();
+  const { products, inventory, outlets } = useInventory();
   const { showToast } = useToast();
 
   /*
@@ -98,6 +99,9 @@ export default function POS() {
 
   const [customerPhone, setCustomerPhone] =
     useState("");
+
+  const [selectedOutlet, setSelectedOutlet] =
+    useState<Outlet | null>(null);
 
   const [amountReceived, setAmountReceived] =
     useState("");
@@ -515,6 +519,17 @@ export default function POS() {
     setCheckoutOpen(false);
   }
 
+  function handleSelectOutlet(outlet: Outlet) {
+    setSelectedOutlet(outlet);
+    setCustomerName(outlet.outletName);
+    setCustomerAddress(outlet.completeAddress);
+    setCustomerPhone(outlet.contactNumber);
+  }
+
+  function handleClearOutlet() {
+    setSelectedOutlet(null);
+  }
+
   const parsedAmountReceived =
     amountReceived.trim() === ""
       ? NaN
@@ -725,6 +740,7 @@ export default function POS() {
       setCustomerName("");
       setCustomerAddress("");
       setCustomerPhone("");
+      setSelectedOutlet(null);
       setAmountReceived("");
       setPaymentMethod("CASH");
 
@@ -1595,44 +1611,20 @@ export default function POS() {
                   Customer Details
                 </h3>
 
-                <div className="mt-3 space-y-4">
-
-                  <Input
-                    label="Customer Name"
-                    type="text"
-                    placeholder="Enter customer name"
-                    value={customerName}
-                    onChange={(event) =>
-                      setCustomerName(
-                        event.target.value
-                      )
-                    }
+                <div className="mt-3">
+                  <CustomerOutletSearch
+                    outlets={outlets}
+                    customerName={customerName}
+                    customerAddress={customerAddress}
+                    customerPhone={customerPhone}
+                    selectedOutlet={selectedOutlet}
+                    onSelectOutlet={handleSelectOutlet}
+                    onClearOutlet={handleClearOutlet}
+                    onCustomerNameChange={setCustomerName}
+                    onCustomerAddressChange={setCustomerAddress}
+                    onCustomerPhoneChange={setCustomerPhone}
+                    disabled={isSubmitting}
                   />
-
-                  <Input
-                    label="Address"
-                    type="text"
-                    placeholder="Enter customer address"
-                    value={customerAddress}
-                    onChange={(event) =>
-                      setCustomerAddress(
-                        event.target.value
-                      )
-                    }
-                  />
-
-                  <Input
-                    label="Phone"
-                    type="tel"
-                    placeholder="Enter phone number"
-                    value={customerPhone}
-                    onChange={(event) =>
-                      setCustomerPhone(
-                        event.target.value
-                      )
-                    }
-                  />
-
                 </div>
 
               </div>
