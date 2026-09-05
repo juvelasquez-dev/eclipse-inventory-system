@@ -80,6 +80,12 @@ function formatPrice(price: number) {
   })}`;
 }
 
+function formatPaymentMethod(method: string) {
+  if (method === "CASH") return "Cash";
+  if (method === "CHEQUE") return "Cheque";
+  return method;
+}
+
 /*
  * =========================================================
  * DATE FILTER HELPERS
@@ -717,6 +723,7 @@ export default function POSHistory() {
                 options={[
                   { label: "All Payment Methods", value: "ALL" },
                   { label: "Cash", value: "CASH" },
+                  { label: "Cheque", value: "CHEQUE" },
                 ]}
               />
 
@@ -881,7 +888,7 @@ export default function POSHistory() {
                           {formatPrice(transaction.subtotal)}
                         </td>
                         <td className="px-4 py-4 text-sm text-slate-600">
-                          {transaction.paymentMethod}
+                          {formatPaymentMethod(transaction.paymentMethod)}
                         </td>
                         <td className="px-4 py-4">
                           <span className="inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-200">
@@ -1050,7 +1057,7 @@ export default function POSHistory() {
               <div className="flex justify-between"><span className="text-slate-500">Subtotal</span><strong>{formatPrice(selectedTransaction.subtotal)}</strong></div>
               <div className="flex justify-between"><span className="text-slate-500">Amount Received</span><strong>{formatPrice(selectedTransaction.amountReceived)}</strong></div>
               <div className="flex justify-between"><span className="text-slate-500">Change</span><strong className="text-emerald-700">{formatPrice(selectedTransaction.changeAmount)}</strong></div>
-              <div className="flex justify-between"><span className="text-slate-500">Payment Method</span><strong>{selectedTransaction.paymentMethod}</strong></div>
+              <div className="flex justify-between"><span className="text-slate-500">Payment Method</span><strong>{formatPaymentMethod(selectedTransaction.paymentMethod)}</strong></div>
               <div className="flex justify-between border-t border-slate-200 pt-2"><span className="text-slate-500">Status</span><strong>{selectedTransaction.transactionStatus}</strong></div>
             </div>
 

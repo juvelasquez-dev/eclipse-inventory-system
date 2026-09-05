@@ -151,7 +151,9 @@ export default function DeliveryReceiptPrint({
           <strong>
             {receipt.paymentMethod === "CASH"
               ? "Cash"
-              : receipt.paymentMethod}
+              : receipt.paymentMethod === "CHEQUE"
+                ? "Cheque"
+                : receipt.paymentMethod}
           </strong>
         </div>
       </div>

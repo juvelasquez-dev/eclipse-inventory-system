@@ -530,21 +530,33 @@ export default function POS() {
     setSelectedOutlet(null);
   }
 
+  function formatPaymentMethod(method: string) {
+    if (method === "CASH") return "Cash";
+    if (method === "CHEQUE") return "Cheque";
+    return method;
+  }
+
+  const isCheque = paymentMethod === "CHEQUE";
+
   const parsedAmountReceived =
     amountReceived.trim() === ""
       ? NaN
       : Number(amountReceived);
 
+  const effectiveAmountReceived =
+    isCheque ? subtotal : parsedAmountReceived;
+
   const amountIsSufficient =
-    Number.isFinite(
-      parsedAmountReceived
-    ) &&
-    parsedAmountReceived >= subtotal;
+    isCheque ||
+    (Number.isFinite(parsedAmountReceived) &&
+      parsedAmountReceived >= subtotal);
 
   const calculatedChange =
-    amountIsSufficient
-      ? parsedAmountReceived - subtotal
-      : 0;
+    isCheque
+      ? 0
+      : amountIsSufficient
+        ? parsedAmountReceived - subtotal
+        : 0;
 
   /*
    * =========================================================
@@ -577,24 +589,24 @@ export default function POS() {
       return;
     }
 
-    if (!Number.isFinite(parsedAmountReceived)) {
-      showToast(
-        "Please enter the amount received.",
-        "error"
-      );
-      return;
-    }
+    if (!isCheque) {
+      if (!Number.isFinite(parsedAmountReceived)) {
+        showToast(
+          "Please enter the amount received.",
+          "error"
+        );
+        return;
+      }
 
-    if (
-      parsedAmountReceived < subtotal
-    ) {
-      showToast(
-        `Amount received must be at least ${formatPrice(
-          subtotal
-        )}.`,
-        "error"
-      );
-      return;
+      if (parsedAmountReceived < subtotal) {
+        showToast(
+          `Amount received must be at least ${formatPrice(
+            subtotal
+          )}.`,
+          "error"
+        );
+        return;
+      }
     }
 
     setIsSubmitting(true);
@@ -614,7 +626,7 @@ export default function POS() {
               customerPhone.trim(),
 
             p_amount_received:
-              parsedAmountReceived,
+              effectiveAmountReceived,
 
             p_payment_method:
               paymentMethod,
@@ -706,7 +718,7 @@ export default function POS() {
         amountReceived:
           Number(
             transactionResult?.amount_received
-          ) || parsedAmountReceived,
+          ) || effectiveAmountReceived,
 
         paymentMethod:
           transactionResult
@@ -1654,24 +1666,30 @@ export default function POS() {
                         label: "Cash",
                         value: "CASH",
                       },
+                      {
+                        label: "Cheque",
+                        value: "CHEQUE",
+                      },
                     ]}
                   />
 
-                  <Input
-                    label="Amount Received"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    placeholder="0.00"
-                    value={
-                      amountReceived
-                    }
-                    onChange={(event) =>
-                      setAmountReceived(
-                        event.target.value
-                      )
-                    }
-                  />
+                  {!isCheque && (
+                    <Input
+                      label="Amount Received"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      placeholder="0.00"
+                      value={
+                        amountReceived
+                      }
+                      onChange={(event) =>
+                        setAmountReceived(
+                          event.target.value
+                        )
+                      }
+                    />
+                  )}
 
                 </div>
 
@@ -1698,17 +1716,21 @@ export default function POS() {
                 <div className="mt-3 flex justify-between text-sm">
 
                   <span className="text-slate-500">
-                    Amount Received
+                    {isCheque
+                      ? "Payment Amount"
+                      : "Amount Received"}
                   </span>
 
                   <span className="font-semibold text-slate-900">
-                    {Number.isFinite(
-                      parsedAmountReceived
-                    )
-                      ? formatPrice(
+                    {isCheque
+                      ? formatPrice(subtotal)
+                      : Number.isFinite(
                           parsedAmountReceived
                         )
-                      : formatPrice(0)}
+                        ? formatPrice(
+                            parsedAmountReceived
+                          )
+                        : formatPrice(0)}
                   </span>
 
                 </div>
@@ -1735,7 +1757,8 @@ export default function POS() {
 
               </div>
 
-              {amountReceived !==
+              {!isCheque &&
+                amountReceived !==
                 "" &&
                 !amountIsSufficient && (
                   <p className="text-sm font-medium text-red-600">
@@ -2174,9 +2197,7 @@ export default function POS() {
             <div className="dr-total-row">
               <span>Payment</span>
               <strong>
-                {receipt.paymentMethod === "CASH"
-                  ? "Cash"
-                  : receipt.paymentMethod}
+                {formatPaymentMethod(receipt.paymentMethod)}
               </strong>
             </div>
           </div>
