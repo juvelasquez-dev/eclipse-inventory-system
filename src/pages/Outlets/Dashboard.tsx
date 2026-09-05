@@ -1,6 +1,5 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
-  Activity,
   AlertTriangle,
   ArrowRight,
   Download,
@@ -9,12 +8,14 @@ import {
   Plus,
   RefreshCw,
   Store,
-  Upload,
   Users,
+  Activity,
+  Upload,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import Button from "../../components/ui/Button";
+import Modal from "../../components/ui/Modal";
 import { useInventoryContext } from "../../context/InventoryContext";
 import type { Outlet } from "../../types/inventory";
 import { exportOutletsExcel } from "../../utils/outlets";
@@ -22,10 +23,11 @@ import { exportOutletsExcel } from "../../utils/outlets";
 const AREA_CODES = ["IAO", "CBR", "EFT"] as const;
 const RECENT_DAYS = 30;
 
-type OutletIssue = {
-  label: string;
-  outlets: Outlet[];
-};
+type DetailView =
+  | { type: "issue"; label: string }
+  | { type: "attention" }
+  | { type: "inactive" }
+  | { type: "recent" };
 
 function hasText(value?: string) {
   return Boolean(value?.trim());
@@ -61,15 +63,9 @@ function getOutletIssues(outlet: Outlet): string[] {
 }
 
 function formatDate(value?: string) {
-  if (!value) {
-    return "Not available";
-  }
-
+  if (!value) return "Not available";
   const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return "Not available";
-  }
+  if (Number.isNaN(date.getTime())) return "Not available";
 
   return date.toLocaleDateString("en-PH", {
     year: "numeric",
@@ -78,59 +74,74 @@ function formatDate(value?: string) {
   });
 }
 
-function getIssueTone(label: string) {
-  if (label === "Missing DEGIC Number") {
-    return "bg-amber-50 text-amber-700 ring-amber-200";
-  }
-
-  if (label === "Missing TIN / ID") {
-    return "bg-violet-50 text-violet-700 ring-violet-200";
-  }
-
-  if (label === "Incomplete Contact Information") {
-    return "bg-sky-50 text-sky-700 ring-sky-200";
-  }
-
+function issueTone(label: string) {
+  if (label === "Missing DEGIC Number") return "bg-amber-50 text-amber-700 ring-amber-200";
+  if (label === "Missing TIN / ID") return "bg-violet-50 text-violet-700 ring-violet-200";
+  if (label === "Incomplete Contact Information") return "bg-sky-50 text-sky-700 ring-sky-200";
   return "bg-rose-50 text-rose-700 ring-rose-200";
 }
 
 export default function OutletDashboard() {
   const navigate = useNavigate();
   const { outlets } = useInventoryContext();
+  const [selectedDetail, setSelectedDetail] = useState<DetailView | null>(null);
+
+  const summary = useMemo(() => {
+    const activeCount = outlets.filter(
+      (outlet) => outlet.status === "Active"
+    ).length;
+
+    const inactiveCount = outlets.filter(
+      (outlet) => outlet.status === "Inactive"
+    ).length;
+
+    const areaCount = new Set(
+      outlets
+        .map((outlet) => outlet.areaCode)
+        .filter(Boolean)
+    ).size;
+
+    return {
+      total: outlets.length,
+      active: activeCount,
+      inactive: inactiveCount,
+      areaCount,
+    };
+  }, [outlets]);
 
   const outletIssues = useMemo(
-    () =>
-      outlets.map((outlet) => ({
-        outlet,
-        issues: getOutletIssues(outlet),
-      })),
+    () => outlets.map((outlet) => ({ outlet, issues: getOutletIssues(outlet) })),
     [outlets]
   );
 
-  const issueGroups = useMemo<OutletIssue[]>(() => {
-    const labels = [
-      "Missing DEGIC Number",
-      "Missing TIN / ID",
-      "Incomplete Contact Information",
-      "Incomplete Outlet Information",
-    ];
+  const issueLabels = [
+    "Missing DEGIC Number",
+    "Missing TIN / ID",
+    "Incomplete Contact Information",
+    "Incomplete Outlet Information",
+  ];
 
-    return labels
-      .map((label) => ({
-        label,
-        outlets: outletIssues
-          .filter((item) => item.issues.includes(label))
-          .map((item) => item.outlet),
-      }))
-      .filter((group) => group.outlets.length > 0);
-  }, [outletIssues]);
+  const issueGroups = useMemo(
+    () =>
+      issueLabels
+        .map((label) => ({
+          label,
+          outlets: outletIssues
+            .filter((item) => item.issues.includes(label))
+            .map((item) => item.outlet),
+        }))
+        .filter((group) => group.outlets.length > 0),
+    [outletIssues]
+  );
 
   const needsAttention = useMemo(
-    () =>
-      outletIssues
-        .filter((item) => item.issues.length > 0)
-        .map((item) => item.outlet),
+    () => outletIssues.filter((item) => item.issues.length > 0).map((item) => item.outlet),
     [outletIssues]
+  );
+
+  const inactiveOutlets = useMemo(
+    () => outlets.filter((outlet) => outlet.status === "Inactive"),
+    [outlets]
   );
 
   const recentCutoff = useMemo(() => {
@@ -143,32 +154,57 @@ export default function OutletDashboard() {
     () =>
       outlets
         .filter((outlet) => {
-          if (!outlet.updatedAt) {
-            return false;
-          }
-
+          if (!outlet.updatedAt) return false;
           const updatedAt = new Date(outlet.updatedAt);
           return !Number.isNaN(updatedAt.getTime()) && updatedAt >= recentCutoff;
         })
         .sort(
-          (a, b) =>
-            new Date(b.updatedAt ?? 0).getTime() -
-            new Date(a.updatedAt ?? 0).getTime()
+          (a, b) => new Date(b.updatedAt ?? 0).getTime() - new Date(a.updatedAt ?? 0).getTime()
         ),
     [outlets, recentCutoff]
   );
 
-  const inactiveOutlets = useMemo(
-    () =>
-      outlets
-        .filter((outlet) => outlet.status === "Inactive")
-        .sort(
-          (a, b) =>
-            new Date(b.updatedAt ?? b.createdAt ?? 0).getTime() -
-            new Date(a.updatedAt ?? a.createdAt ?? 0).getTime()
-        ),
-    [outlets]
-  );
+  const detailOutlets = useMemo(() => {
+    if (!selectedDetail) return [];
+    if (selectedDetail.type === "inactive") return inactiveOutlets;
+    if (selectedDetail.type === "recent") return recentlyUpdated;
+    if (selectedDetail.type === "attention") return needsAttention;
+    return issueGroups.find((group) => group.label === selectedDetail.label)?.outlets ?? [];
+  }, [selectedDetail, inactiveOutlets, recentlyUpdated, needsAttention, issueGroups]);
+
+  const detailTitle = !selectedDetail
+    ? ""
+    : selectedDetail.type === "inactive"
+      ? "Inactive Outlets"
+      : selectedDetail.type === "recent"
+        ? "Recently Updated Outlets"
+        : selectedDetail.type === "attention"
+          ? "Outlets Needing Attention"
+          : selectedDetail.label === "Missing DEGIC Number"
+            ? "Outlets Missing DEGIC Number"
+            : selectedDetail.label === "Missing TIN / ID"
+              ? "Outlets Missing TIN / ID"
+              : selectedDetail.label;
+
+  const detailDescription = !selectedDetail
+    ? ""
+    : selectedDetail.type === "inactive"
+      ? "These outlets are currently marked Inactive."
+      : selectedDetail.type === "recent"
+        ? `These outlets were updated within the last ${RECENT_DAYS} days.`
+        : selectedDetail.type === "attention"
+          ? "These outlets have one or more incomplete records."
+        : selectedDetail.label === "Missing DEGIC Number"
+          ? "These outlets do not have a DEGIC Number."
+          : selectedDetail.label === "Missing TIN / ID"
+            ? "These outlets do not have a TIN or a complete ID record."
+            : selectedDetail.label === "Incomplete Contact Information"
+              ? "These outlets are missing a contact person or contact number."
+              : "These outlets are missing required outlet information.";
+
+  function openOutlets() {
+    navigate("/outlets");
+  }
 
   const areaOperations = useMemo(
     () =>
@@ -190,13 +226,13 @@ export default function OutletDashboard() {
   const cards = [
     {
       title: "Active Outlets",
-      value: outlets.filter((outlet) => outlet.status === "Active").length,
+      value: summary.active,
       icon: Activity,
       tone: "emerald",
     },
     {
       title: "Inactive Outlets",
-      value: inactiveOutlets.length,
+      value: summary.inactive,
       icon: Users,
       tone: "amber",
     },
@@ -214,74 +250,52 @@ export default function OutletDashboard() {
     },
   ];
 
-  function openOutlets() {
-    navigate("/outlets");
-  }
-
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900">
-            Outlet Dashboard
-          </h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Manage outlet records and review information that needs attention.
-          </p>
+    <>
+      <div className="space-y-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight text-slate-900">
+              Outlet Dashboard
+            </h1>
+            <p className="mt-1 text-sm text-slate-500">
+              Manage outlet records and review information that needs attention.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" onClick={openOutlets} className="gap-2">
+              <Plus size={16} /> Add Outlet
+            </Button>
+            <Button type="button" variant="secondary" onClick={openOutlets} className="gap-2">
+              <Upload size={16} /> Import Outlets
+            </Button>
+            <Button type="button" variant="secondary" onClick={() => exportOutletsExcel(outlets)} className="gap-2">
+              <Download size={16} /> Export Outlets
+            </Button>
+          </div>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          <Button type="button" onClick={openOutlets} className="gap-2">
-            <Plus size={16} />
-            Add Outlet
-          </Button>
-          <Button type="button" variant="secondary" onClick={openOutlets} className="gap-2">
-            <Upload size={16} />
-            Import Outlets
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() => exportOutletsExcel(outlets)}
-            className="gap-2"
-          >
-            <Download size={16} />
-            Export Outlets
-          </Button>
-        </div>
-      </div>
-
-      {outlets.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-12 text-center shadow-sm">
-          <Store className="mx-auto text-slate-300" size={32} />
-          <h2 className="mt-4 text-lg font-semibold text-slate-800">
-            No outlet records yet
-          </h2>
-          <p className="mt-1 text-sm text-slate-500">
-            Add or import an outlet to begin managing your network.
-          </p>
-          <Button type="button" onClick={openOutlets} className="mt-5 gap-2">
-            <Plus size={16} />
-            Add Outlet
-          </Button>
-        </div>
-      ) : (
-        <>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {cards.map(({ title, value, icon: Icon, tone }) => (
-              <div
-                key={title}
-                className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm text-slate-500">{title}</p>
-                    <p className="mt-2 text-3xl font-bold tracking-tight text-slate-900">
-                      {value}
-                    </p>
-                  </div>
-                  <div
-                    className={`flex h-11 w-11 items-center justify-center rounded-xl ring-1 ring-inset ${
+        {outlets.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-12 text-center shadow-sm">
+            <Store className="mx-auto text-slate-300" size={32} />
+            <h2 className="mt-4 text-lg font-semibold text-slate-800">No outlet records yet</h2>
+            <p className="mt-1 text-sm text-slate-500">Add or import an outlet to begin managing your network.</p>
+            <Button type="button" onClick={openOutlets} className="mt-5 gap-2">
+              <Plus size={16} /> Add Outlet
+            </Button>
+          </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              {cards.map(({ title, value, icon: Icon, tone }) => (
+                <div key={title} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm text-slate-500">{title}</p>
+                      <p className="mt-2 text-3xl font-bold tracking-tight text-slate-900">{value}</p>
+                    </div>
+                    <div className={`flex h-11 w-11 items-center justify-center rounded-xl ring-1 ring-inset ${
                       tone === "emerald"
                         ? "bg-emerald-50 text-emerald-600 ring-emerald-100"
                         : tone === "amber"
@@ -289,83 +303,52 @@ export default function OutletDashboard() {
                           : tone === "rose"
                             ? "bg-rose-50 text-rose-600 ring-rose-100"
                             : "bg-sky-50 text-sky-600 ring-sky-100"
-                    }`}
-                  >
-                    <Icon size={20} />
+                    }`}>
+                      <Icon size={20} />
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
-
-          <section className="rounded-2xl border border-rose-200 bg-white shadow-sm">
-            <div className="flex flex-col gap-3 border-b border-rose-100 bg-rose-50/50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-start gap-3">
-                <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-rose-100 text-rose-600">
-                  <AlertTriangle size={18} />
-                </div>
-                <div>
-                  <h2 className="font-semibold text-slate-900">Needs Attention</h2>
-                  <p className="text-xs text-slate-500">
-                    Review incomplete outlet records before they cause follow-up work.
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={openOutlets}
-                className="inline-flex items-center gap-1 text-sm font-semibold text-rose-700 hover:text-rose-800"
-              >
-                View All <ArrowRight size={15} />
-              </button>
+              ))}
             </div>
 
-            {issueGroups.length === 0 ? (
-              <div className="px-5 py-8 text-center text-sm text-emerald-700">
-                All outlet records contain the currently required information.
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 gap-4 p-5 lg:grid-cols-2">
-                {issueGroups.map((group) => (
-                  <div key={group.label} className="rounded-xl border border-slate-200 p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${getIssueTone(group.label)}`}>
-                        {group.label}
-                      </span>
-                      <span className="text-sm font-semibold text-slate-500">
-                        {group.outlets.length}
-                      </span>
-                    </div>
-                    <div className="mt-3 divide-y divide-slate-100">
-                      {group.outlets.slice(0, 3).map((outlet) => (
-                        <div key={outlet.id} className="flex items-center justify-between gap-3 py-2 first:pt-0 last:pb-0">
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-medium text-slate-800">{outlet.outletName}</p>
-                            <p className="text-xs text-slate-500">{outlet.areaCode || "No area"}</p>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={openOutlets}
-                            aria-label={`Open ${outlet.outletName} in Outlet Management`}
-                            className="inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-50"
-                          >
-                            Manage <ArrowRight size={13} />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                    {group.outlets.length > 3 && (
-                      <button type="button" onClick={openOutlets} className="mt-3 text-xs font-semibold text-slate-500 hover:text-slate-800">
-                        + {group.outlets.length - 3} more
-                      </button>
-                    )}
+            <section className="rounded-2xl border border-rose-200 bg-white shadow-sm">
+              <div className="flex flex-col gap-3 border-b border-rose-100 bg-rose-50/50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-start gap-3">
+                  <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-rose-100 text-rose-600">
+                    <AlertTriangle size={18} />
                   </div>
-                ))}
+                  <div>
+                    <h2 className="font-semibold text-slate-900">Needs Attention</h2>
+                    <p className="text-xs text-slate-500">Review incomplete outlet records before they cause follow-up work.</p>
+                  </div>
+                </div>
+                <button type="button" onClick={() => setSelectedDetail({ type: "attention" })} className="inline-flex items-center gap-1 text-sm font-semibold text-rose-700 hover:text-rose-800">
+                  View All <ArrowRight size={15} />
+                </button>
               </div>
-            )}
-          </section>
 
-          <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+              {issueGroups.length === 0 ? (
+                <div className="px-5 py-8 text-center text-sm text-emerald-700">All outlet records contain the currently required information.</div>
+              ) : (
+                <div className="grid grid-cols-1 gap-4 p-5 lg:grid-cols-2">
+                  {issueGroups.map((group) => (
+                    <button key={group.label} type="button" onClick={() => setSelectedDetail({ type: "issue", label: group.label })} className="rounded-xl border border-slate-200 p-4 text-left transition hover:border-emerald-300 hover:bg-emerald-50/30">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${issueTone(group.label)}`}>{group.label}</span>
+                        <span className="flex items-center gap-1 text-sm font-semibold text-slate-500">{group.outlets.length} <ArrowRight size={14} /></span>
+                      </div>
+                      <div className="mt-3 space-y-1">
+                        {group.outlets.slice(0, 3).map((outlet) => (
+                          <p key={outlet.id} className="truncate text-sm text-slate-700">{outlet.outletName} <span className="text-xs text-slate-400">({outlet.areaCode || "No area"})</span></p>
+                        ))}
+                      </div>
+                      {group.outlets.length > 3 && <p className="mt-3 text-xs font-semibold text-slate-500">+ {group.outlets.length - 3} more</p>}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </section>
+
             <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
               <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-5 py-4">
                 <div>
@@ -410,69 +393,56 @@ export default function OutletDashboard() {
                   <h2 className="font-semibold text-slate-900">Inactive Outlets</h2>
                   <p className="mt-1 text-xs text-slate-500">Based on the current status field.</p>
                 </div>
-                <button type="button" onClick={openOutlets} className="text-sm font-semibold text-emerald-700 hover:text-emerald-800">View All</button>
+                <button type="button" onClick={() => setSelectedDetail({ type: "inactive" })} className="text-sm font-semibold text-emerald-700 hover:text-emerald-800">View All</button>
               </div>
-              {inactiveOutlets.length === 0 ? (
-                <p className="px-5 py-8 text-center text-sm text-slate-500">No inactive outlets.</p>
-              ) : (
-                <div className="divide-y divide-slate-100">
-                  {inactiveOutlets.slice(0, 5).map((outlet) => (
-                    <div key={outlet.id} className="flex items-center justify-between gap-3 px-5 py-3">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-slate-800">{outlet.outletName}</p>
-                        <p className="truncate text-xs text-slate-500">{outlet.areaCode} · {outlet.contactPerson}</p>
-                      </div>
-                      <div className="shrink-0 text-right">
-                        <p className="text-xs text-slate-500">Last updated</p>
-                        <p className="text-xs font-medium text-slate-700">{formatDate(outlet.updatedAt)}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </section>
-          </div>
-
-          <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <div className="flex flex-col gap-2 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h2 className="font-semibold text-slate-900">Recently Updated</h2>
-                <p className="mt-1 text-xs text-slate-500">Outlets updated within the last {RECENT_DAYS} days.</p>
-              </div>
-              <button type="button" onClick={openOutlets} className="inline-flex items-center gap-1 text-sm font-semibold text-emerald-700 hover:text-emerald-800">
-                View All <ArrowRight size={15} />
-              </button>
-            </div>
-            {recentlyUpdated.length === 0 ? (
-              <div className="px-5 py-8 text-center text-sm text-slate-500">No outlets have been updated recently.</div>
-            ) : (
-              <div className="grid grid-cols-1 divide-y divide-slate-100 md:grid-cols-2 md:divide-x md:divide-y-0">
-                {recentlyUpdated.slice(0, 6).map((outlet) => (
+              <div className="divide-y divide-slate-100">
+                {inactiveOutlets.length === 0 ? <p className="px-5 py-8 text-center text-sm text-slate-500">No inactive outlets.</p> : inactiveOutlets.slice(0, 5).map((outlet) => (
                   <div key={outlet.id} className="flex items-center justify-between gap-3 px-5 py-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-slate-800">{outlet.outletName}</p>
-                      <p className="text-xs text-slate-500">{outlet.areaCode}</p>
-                    </div>
-                    <div className="shrink-0 text-right">
-                      <span className={`inline-flex rounded-full px-2 py-1 text-[11px] font-semibold ${outlet.status === "Active" ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>
-                        {outlet.status}
-                      </span>
-                      <p className="mt-1 text-xs text-slate-500">{formatDate(outlet.updatedAt)}</p>
-                    </div>
+                    <div className="min-w-0"><p className="truncate text-sm font-medium text-slate-800">{outlet.outletName}</p><p className="truncate text-xs text-slate-500">{outlet.areaCode} · {outlet.contactPerson}</p></div>
+                    <p className="shrink-0 text-right text-xs text-slate-500">Updated<br /><span className="font-medium text-slate-700">{formatDate(outlet.updatedAt)}</span></p>
                   </div>
                 ))}
               </div>
-            )}
-          </section>
+            </section>
 
-          <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="secondary" onClick={openOutlets} className="gap-2">
-              <FileText size={16} />
-              Review Incomplete
-            </Button>
+            <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <div className="flex flex-col gap-2 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                <div><h2 className="font-semibold text-slate-900">Recently Updated</h2><p className="mt-1 text-xs text-slate-500">Outlets updated within the last {RECENT_DAYS} days.</p></div>
+                <button type="button" onClick={() => setSelectedDetail({ type: "recent" })} className="inline-flex items-center gap-1 text-sm font-semibold text-emerald-700 hover:text-emerald-800">View All <ArrowRight size={15} /></button>
+              </div>
+              <div className="grid grid-cols-1 divide-y divide-slate-100 md:grid-cols-2 md:divide-x md:divide-y-0">
+                {recentlyUpdated.length === 0 ? <div className="px-5 py-8 text-center text-sm text-slate-500 md:col-span-2">No outlets have been updated recently.</div> : recentlyUpdated.slice(0, 6).map((outlet) => (
+                  <div key={outlet.id} className="flex items-center justify-between gap-3 px-5 py-3"><div className="min-w-0"><p className="truncate text-sm font-medium text-slate-800">{outlet.outletName}</p><p className="text-xs text-slate-500">{outlet.areaCode}</p></div><div className="shrink-0 text-right"><span className={`inline-flex rounded-full px-2 py-1 text-[11px] font-semibold ${outlet.status === "Active" ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>{outlet.status}</span><p className="mt-1 text-xs text-slate-500">{formatDate(outlet.updatedAt)}</p></div></div>
+                ))}
+              </div>
+            </section>
+
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="secondary" onClick={() => setSelectedDetail({ type: "attention" })} className="gap-2">
+                <FileText size={16} /> Review Incomplete
+              </Button>
+            </div>
+          </>
+        )}
+      </div>
+
+      <Modal open={selectedDetail !== null} onClose={() => setSelectedDetail(null)} title={detailTitle}>
+        <div className="space-y-5">
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+            <p className="text-sm text-slate-500">{detailDescription}</p>
+            <p className="text-sm font-semibold text-slate-800">{detailOutlets.length} {detailOutlets.length === 1 ? "outlet" : "outlets"}</p>
           </div>
-        </>
-      )}
-    </div>
+          {detailOutlets.length === 0 ? <div className="rounded-xl border border-dashed border-slate-300 px-4 py-10 text-center text-sm text-slate-500">No outlets match this review list.</div> : (
+            <div className="max-h-[min(60vh,28rem)] overflow-auto rounded-xl border border-slate-200">
+              <table className="w-full min-w-[38rem] text-left text-sm">
+                <thead className="sticky top-0 bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-3 font-semibold">Outlet Name</th><th className="px-4 py-3 font-semibold">Area</th><th className="px-4 py-3 font-semibold">Contact Person</th>{selectedDetail?.type !== "recent" && <th className="px-4 py-3 font-semibold">Contact Number</th>}<th className="px-4 py-3 font-semibold">Status</th>{selectedDetail?.type === "inactive" && <th className="px-4 py-3 font-semibold">Last Updated</th>}{selectedDetail?.type === "recent" && <th className="px-4 py-3 font-semibold">Updated Date</th>}</tr></thead>
+                <tbody className="divide-y divide-slate-100">{detailOutlets.map((outlet) => <tr key={outlet.id} className="hover:bg-slate-50"><td className="px-4 py-3 font-medium text-slate-800">{outlet.outletName}</td><td className="px-4 py-3 text-slate-600">{outlet.areaCode || "-"}</td><td className="px-4 py-3 text-slate-600">{outlet.contactPerson || "-"}</td>{selectedDetail?.type !== "recent" && <td className="px-4 py-3 text-slate-600">{outlet.contactNumber || "-"}</td>}<td className="px-4 py-3"><span className={`inline-flex rounded-full px-2 py-1 text-[11px] font-semibold ${outlet.status === "Active" ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>{outlet.status}</span></td>{(selectedDetail?.type === "inactive" || selectedDetail?.type === "recent") && <td className="px-4 py-3 text-slate-600">{formatDate(outlet.updatedAt)}</td>}</tr>)}</tbody>
+              </table>
+            </div>
+          )}
+          <div className="flex flex-col-reverse gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between"><Button type="button" variant="secondary" onClick={openOutlets}>Manage Outlets</Button><Button type="button" onClick={() => setSelectedDetail(null)}>Close</Button></div>
+        </div>
+      </Modal>
+    </>
   );
 }
