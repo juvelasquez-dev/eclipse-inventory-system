@@ -249,11 +249,6 @@ export function InventoryProvider({
         return;
       }
 
-      console.log(
-        "Authenticated user:",
-        session.user.email
-      );
-
       /*
        * Load products.
        */

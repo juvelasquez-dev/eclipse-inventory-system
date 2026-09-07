@@ -6,6 +6,65 @@ import Button from "../../components/ui/Button";
 import Input from "../../components/ui/Input";
 import { supabase } from "../../lib/supabase";
 
+const LOGIN_LOCKOUT_STORAGE_KEY = "eclipse-login-lockouts";
+const MAX_FAILED_LOGIN_ATTEMPTS = 5;
+const LOCKOUT_DURATION_MS = 15 * 60 * 1000;
+
+interface LoginLockout {
+  failedAttempts: number;
+  lockedUntil: number | null;
+}
+
+type LoginLockouts = Record<string, LoginLockout>;
+
+function getLoginLockouts(): LoginLockouts {
+  try {
+    const storedLockouts = localStorage.getItem(
+      LOGIN_LOCKOUT_STORAGE_KEY
+    );
+
+    if (!storedLockouts) {
+      return {};
+    }
+
+    const lockouts = JSON.parse(storedLockouts) as LoginLockouts;
+
+    return typeof lockouts === "object" && lockouts
+      ? lockouts
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveLoginLockouts(lockouts: LoginLockouts) {
+  localStorage.setItem(
+    LOGIN_LOCKOUT_STORAGE_KEY,
+    JSON.stringify(lockouts)
+  );
+}
+
+function getRemainingLockoutTime(
+  username: string,
+  now = Date.now()
+) {
+  const lockout = getLoginLockouts()[username];
+
+  if (!lockout?.lockedUntil) {
+    return 0;
+  }
+
+  return Math.max(0, lockout.lockedUntil - now);
+}
+
+function formatLockoutCountdown(remainingMs: number) {
+  const totalSeconds = Math.ceil(remainingMs / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+
+  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+}
+
 export default function Login() {
   const navigate = useNavigate();
 
@@ -23,6 +82,9 @@ export default function Login() {
 
   const [checkingSession, setCheckingSession] =
     useState(true);
+
+  const [remainingLockoutMs, setRemainingLockoutMs] =
+    useState(0);
 
   useEffect(() => {
     async function redirectAuthenticatedUser() {
@@ -42,6 +104,39 @@ export default function Login() {
 
     void redirectAuthenticatedUser();
   }, [navigate]);
+
+  useEffect(() => {
+    const trimmedUsername = username.trim();
+
+    function updateLockout() {
+      const remainingMs = getRemainingLockoutTime(
+        trimmedUsername
+      );
+
+      setRemainingLockoutMs(remainingMs);
+
+      if (!remainingMs && trimmedUsername) {
+        const lockouts = getLoginLockouts();
+        const lockout = lockouts[trimmedUsername];
+
+        if (lockout?.lockedUntil) {
+          delete lockouts[trimmedUsername];
+          saveLoginLockouts(lockouts);
+        }
+      }
+    }
+
+    updateLockout();
+
+    const interval = window.setInterval(
+      updateLockout,
+      1000
+    );
+
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, [username]);
 
   if (checkingSession) {
     return (
@@ -80,12 +175,12 @@ export default function Login() {
       return;
     }
 
+    if (getRemainingLockoutTime(trimmedUsername)) {
+      return;
+    }
+
     setLoading(true);
 
-    /*
-     * Find the account associated
-     * with the username.
-     */
     const { data: email, error: userError } =
       await supabase.rpc(
         "get_login_email",
@@ -94,13 +189,6 @@ export default function Login() {
         }
       );
 
-    if (userError) {
-      console.error(
-        "Supabase username lookup failed:",
-        userError
-      );
-    }
-
     const loginEmail =
       typeof email === "string"
         ? email.trim()
@@ -108,18 +196,10 @@ export default function Login() {
 
     if (userError || !loginEmail) {
       setLoading(false);
-      setError(
-        "Invalid username or password."
-      );
+      registerFailedLoginAttempt(trimmedUsername);
       return;
     }
 
-    /*
-     * Sign in using the email stored
-     * internally in the users table.
-     *
-     * The user only provides a username.
-     */
     const { error: loginError } =
       await supabase.auth.signInWithPassword({
         email: loginEmail,
@@ -129,25 +209,48 @@ export default function Login() {
     setLoading(false);
 
     if (loginError) {
-      console.error(
-        "Supabase signInWithPassword failed:",
-        {
-          username: trimmedUsername,
-          email: loginEmail,
-          passwordProvided: password.length > 0,
-          name: loginError.name,
-          message: loginError.message,
-          status: loginError.status,
-          code: loginError.code,
-        }
-      );
-      setError(
-        "Invalid username or password."
-      );
+      registerFailedLoginAttempt(trimmedUsername);
       return;
     }
 
+    resetFailedLoginAttempts(trimmedUsername);
     navigate("/system");
+  }
+
+  function registerFailedLoginAttempt(username: string) {
+    const lockouts = getLoginLockouts();
+    const currentLockout = lockouts[username];
+    const failedAttempts =
+      (currentLockout?.failedAttempts ?? 0) + 1;
+    const lockedUntil =
+      failedAttempts >= MAX_FAILED_LOGIN_ATTEMPTS
+        ? Date.now() + LOCKOUT_DURATION_MS
+        : null;
+
+    lockouts[username] = {
+      failedAttempts,
+      lockedUntil,
+    };
+    saveLoginLockouts(lockouts);
+    setRemainingLockoutMs(
+      lockedUntil
+        ? Math.max(0, lockedUntil - Date.now())
+        : 0
+    );
+    setError(
+      lockedUntil
+        ? "Too many failed attempts. Please try again later."
+        : "Invalid username or password."
+    );
+  }
+
+  function resetFailedLoginAttempts(username: string) {
+    const lockouts = getLoginLockouts();
+
+    if (lockouts[username]) {
+      delete lockouts[username];
+      saveLoginLockouts(lockouts);
+    }
   }
 
   return (
@@ -270,6 +373,12 @@ export default function Login() {
               </div>
             )}
 
+            {remainingLockoutMs > 0 && (
+              <p className="mt-4 text-center text-sm text-red-600">
+                Login is temporarily locked for this username. Try again in {formatLockoutCountdown(remainingLockoutMs)}.
+              </p>
+            )}
+
             <form
               onSubmit={handleSubmit}
               className="mt-8 space-y-5"
@@ -308,7 +417,7 @@ export default function Login() {
               {/* Submit */}
               <Button
                 type="submit"
-                disabled={loading}
+                disabled={loading || remainingLockoutMs > 0}
                 className="w-full !rounded-xl !py-3 !bg-gradient-to-b !from-pink-500 !to-rose-500 !shadow-md !shadow-pink-900/20 hover:!from-pink-600 hover:!to-rose-600 hover:!shadow-lg hover:!shadow-pink-900/25 disabled:!opacity-70"
               >
                 {loading
