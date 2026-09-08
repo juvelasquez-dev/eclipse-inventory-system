@@ -5,6 +5,8 @@ import {
 
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
+import { useInactivityLogout } from "../../hooks/useInactivityLogout";
+import { useToast } from "../../context/ToastContext";
 
 export default function ProtectedRoute() {
   const [loading, setLoading] =
@@ -12,6 +14,15 @@ export default function ProtectedRoute() {
 
   const [authenticated, setAuthenticated] =
     useState(false);
+
+  const { showToast } = useToast();
+
+  useInactivityLogout(authenticated, () => {
+    showToast(
+      "Your session ended due to inactivity. Please log in again.",
+      "error"
+    );
+  });
 
   useEffect(() => {
     async function checkSession() {

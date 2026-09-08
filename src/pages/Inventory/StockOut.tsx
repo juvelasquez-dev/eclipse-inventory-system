@@ -78,7 +78,7 @@ export default function StockOut() {
    * =========================================================
    */
 
-  function handleSubmit(data: {
+  async function handleSubmit(data: {
     productId: string;
     quantity: number;
     remarks: string;
@@ -113,7 +113,7 @@ export default function StockOut() {
       return;
     }
 
-    addTransaction({
+    const success = await addTransaction({
       id: crypto.randomUUID(),
       productId: data.productId,
       type: "OUT",
@@ -121,6 +121,13 @@ export default function StockOut() {
       remarks: data.remarks,
       date: new Date().toISOString(),
     });
+
+    if (!success) {
+      showToast(
+        "Unable to stock out. Please try again."
+      );
+      return;
+    }
 
     showToast(
       `${data.quantity} ${
@@ -223,7 +230,7 @@ export default function StockOut() {
    * =========================================================
    */
 
-  function handleConfirmImport() {
+  async function handleConfirmImport() {
     /*
      * Never allow a partial import.
      *
@@ -249,6 +256,12 @@ export default function StockOut() {
       importNow
         .toTimeString()
         .slice(0, 8);
+
+    let successCount = 0;
+    const failedRows: {
+      rowNumber: number;
+      productCode: string;
+    }[] = [];
 
     for (const row of validImportRows) {
       const product =
@@ -294,7 +307,7 @@ export default function StockOut() {
         }
       }
 
-      addTransaction({
+      const success = await addTransaction({
         id: crypto.randomUUID(),
         productId: product.id,
         type: "OUT",
@@ -305,17 +318,49 @@ export default function StockOut() {
           row.remarks ??
           "Excel import",
       });
+
+      if (success) {
+        successCount++;
+      } else {
+        failedRows.push({
+          rowNumber: row.rowNumber,
+          productCode: row.productCode,
+        });
+      }
     }
 
-    showToast(
-      `${validImportRows.length} stock-out record${
-        validImportRows.length === 1
-          ? ""
-          : "s"
-      } imported successfully.`
-    );
+    if (failedRows.length === 0) {
+      showToast(
+        `${validImportRows.length} stock-out record${
+          validImportRows.length === 1
+            ? ""
+            : "s"
+        } imported successfully.`
+      );
 
-    handleCancelImport();
+      handleCancelImport();
+      return;
+    }
+
+    const failedRowNumbers = failedRows
+      .map((row) => row.rowNumber)
+      .join(", ");
+
+    if (successCount === 0) {
+      showToast(
+        `Import failed. ${failedRows.length} row${
+          failedRows.length === 1 ? "" : "s"
+        } could not be saved (row${
+          failedRows.length === 1 ? "" : "s"
+        } ${failedRowNumbers}).`
+      );
+    } else {
+      showToast(
+        `${successCount} succeeded, ${failedRows.length} failed. Failed row${
+          failedRows.length === 1 ? "" : "s"
+        }: ${failedRowNumbers}.`
+      );
+    }
   }
 
   /*

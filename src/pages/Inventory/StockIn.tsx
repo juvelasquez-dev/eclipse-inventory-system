@@ -90,7 +90,7 @@ export default function StockIn() {
       }
     );
 
-  function handleSubmit(data: {
+  async function handleSubmit(data: {
     productId: string;
     quantity: number;
     remarks: string;
@@ -105,7 +105,7 @@ export default function StockIn() {
       return;
     }
 
-    addTransaction({
+    const success = await addTransaction({
       id: crypto.randomUUID(),
       productId: data.productId,
       type: "IN",
@@ -113,6 +113,13 @@ export default function StockIn() {
       remarks: data.remarks,
       date: new Date().toISOString(),
     });
+
+    if (!success) {
+      showToast(
+        "Unable to add stock. Please try again."
+      );
+      return;
+    }
 
     showToast(
       `${data.quantity} ${product.unit} of ${product.name} added to stock.`
@@ -195,7 +202,7 @@ export default function StockIn() {
    * The time comes from the exact moment
    * the user clicks "Confirm Import".
    */
-  function confirmImport() {
+  async function confirmImport() {
     if (
       importRows.length === 0 ||
       invalidRows.length > 0
@@ -211,6 +218,12 @@ export default function StockIn() {
      */
     const importTimestamp =
       new Date();
+
+    let successCount = 0;
+    const failedRows: {
+      rowNumber: number;
+      productCode: string;
+    }[] = [];
 
     for (const row of validRows) {
       const product =
@@ -258,7 +271,7 @@ export default function StockIn() {
         }
       }
 
-      addTransaction({
+      const success = await addTransaction({
         id: crypto.randomUUID(),
         productId: product.id,
         type: "IN",
@@ -269,17 +282,49 @@ export default function StockIn() {
           row.remarks ??
           "Excel import",
       });
+
+      if (success) {
+        successCount++;
+      } else {
+        failedRows.push({
+          rowNumber: row.rowNumber,
+          productCode: row.productCode,
+        });
+      }
     }
 
-    showToast(
-      `${validRows.length} stock-in record${
-        validRows.length === 1
-          ? ""
-          : "s"
-      } imported successfully.`
-    );
+    if (failedRows.length === 0) {
+      showToast(
+        `${validRows.length} stock-in record${
+          validRows.length === 1
+            ? ""
+            : "s"
+        } imported successfully.`
+      );
 
-    closeImportModal();
+      closeImportModal();
+      return;
+    }
+
+    const failedRowNumbers = failedRows
+      .map((row) => row.rowNumber)
+      .join(", ");
+
+    if (successCount === 0) {
+      showToast(
+        `Import failed. ${failedRows.length} row${
+          failedRows.length === 1 ? "" : "s"
+        } could not be saved (row${
+          failedRows.length === 1 ? "" : "s"
+        } ${failedRowNumbers}).`
+      );
+    } else {
+      showToast(
+        `${successCount} succeeded, ${failedRows.length} failed. Failed row${
+          failedRows.length === 1 ? "" : "s"
+        }: ${failedRowNumbers}.`
+      );
+    }
   }
 
   return (

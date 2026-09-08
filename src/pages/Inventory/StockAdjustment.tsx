@@ -66,7 +66,7 @@ export default function StockAdjustment() {
         );
       });
 
-  function handleSubmit(data: {
+  async function handleSubmit(data: {
     productId: string;
     quantity: number;
     remarks: string;
@@ -87,7 +87,7 @@ export default function StockAdjustment() {
      * for REMOVE because TransactionForm
      * handles that conversion.
      */
-    addTransaction({
+    const success = await addTransaction({
       id: crypto.randomUUID(),
       productId: data.productId,
       type: "ADJUSTMENT",
@@ -103,6 +103,13 @@ export default function StockAdjustment() {
        */
       date: new Date().toISOString(),
     });
+
+    if (!success) {
+      showToast(
+        "Unable to save stock adjustment. Please try again."
+      );
+      return;
+    }
 
     const action =
       data.quantity >= 0
