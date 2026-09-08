@@ -730,6 +730,44 @@ export function InventoryProvider({
       return false;
     }
 
+    if (transaction.type === "OUT") {
+      const { data, error } =
+        await supabase.rpc(
+          "create_stock_out_transaction",
+          {
+            p_transaction_id:
+              transaction.id,
+            p_product_id:
+              transaction.productId,
+            p_quantity:
+              transaction.quantity,
+            p_date: transaction.date,
+            p_remarks:
+              transaction.remarks ?? "",
+          }
+        );
+
+      if (error) {
+        console.error(
+          "Error adding transaction:",
+          error
+        );
+
+        return false;
+      }
+
+      const row = Array.isArray(data)
+        ? data[0]
+        : data;
+
+      setTransactions((prev) => [
+        ...prev,
+        mapTransaction(row),
+      ]);
+
+      return true;
+    }
+
     const { data, error } =
       await supabase
         .from("transactions")
