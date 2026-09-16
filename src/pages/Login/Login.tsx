@@ -206,10 +206,26 @@ export default function Login() {
         password,
       });
 
+    if (loginError) {
+      setLoading(false);
+      registerFailedLoginAttempt(trimmedUsername);
+      return;
+    }
+
+    const { data: status, error: statusError } =
+      await supabase.rpc("get_current_user_status");
+
     setLoading(false);
 
-    if (loginError) {
-      registerFailedLoginAttempt(trimmedUsername);
+    if (statusError) {
+      await supabase.auth.signOut();
+      setError("Unable to verify account status. Please try again.");
+      return;
+    }
+
+    if (status === "INACTIVE") {
+      await supabase.auth.signOut();
+      setError("This account has been deactivated.");
       return;
     }
 

@@ -9,14 +9,17 @@ import {
   Receipt,
   MapPin,
   Truck,
+  ShieldCheck,
   ClipboardList,
 } from "lucide-react";
 
 import { supabase } from "../../lib/supabase";
+import { useUserRole } from "../../hooks/useUserRole";
 import { useUserArea } from "../../hooks/useUserArea";
 
 export default function System() {
   const navigate = useNavigate();
+  const { role } = useUserRole();
   const { areaCode } = useUserArea();
 
   async function handleLogout() {
@@ -163,11 +166,13 @@ export default function System() {
           </div>
 
           {/* System Options */}
-          <div className={`mt-14 grid grid-cols-1 gap-6 md:grid-cols-3 ${
-              areaCode === "IAO"
+          <div
+            className={`mt-14 grid grid-cols-1 gap-6 md:grid-cols-3 ${
+              role === "ADMIN" || areaCode === "IAO"
                 ? "lg:grid-cols-4"
                 : ""
-            }`}>
+            }`}
+          >
 
             {/* Inventory */}
             <button
@@ -345,7 +350,9 @@ export default function System() {
                   strokeWidth={1}
                   className="pointer-events-none absolute -bottom-6 -right-6 text-cyan-600/[0.08] transition-transform duration-500 group-hover:scale-110 group-hover:rotate-6"
                 />
+
                 <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-gradient-to-br from-cyan-300/0 to-sky-300/0 blur-2xl transition-all duration-300 group-hover:from-cyan-300/30 group-hover:to-sky-200/20" />
+
                 <div className="relative">
                   <div className="flex items-start justify-between">
                     <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-500 to-sky-600 text-white shadow-md shadow-cyan-900/20 transition-transform duration-300 group-hover:scale-105 group-hover:-rotate-3">
@@ -353,6 +360,7 @@ export default function System() {
                     </div>
                     <ArrowRight size={20} className="text-cyan-300 transition-all duration-300 group-hover:translate-x-1 group-hover:text-cyan-600" />
                   </div>
+
                   <h2 className="mt-7 text-xl font-bold tracking-tight text-slate-900">
                     IAO Outlet Orders
                   </h2>
@@ -365,6 +373,62 @@ export default function System() {
                     <ArrowRight size={14} className="transition-transform duration-300 group-hover:translate-x-1" />
                   </div>
                 </div>
+              </button>
+            )}
+
+            {/* Administration (ADMIN only) */}
+            {role === "ADMIN" && (
+              <button
+                type="button"
+                onClick={() => navigate("/admin")}
+                className="group relative overflow-hidden rounded-3xl border border-indigo-100 bg-gradient-to-b from-white to-indigo-50/40 p-8 text-left shadow-sm transition-all duration-300 hover:-translate-y-1.5 hover:border-indigo-300 hover:shadow-xl hover:shadow-indigo-900/10"
+              >
+
+                <ShieldCheck
+                  size={140}
+                  strokeWidth={1}
+                  className="pointer-events-none absolute -bottom-6 -right-6 text-indigo-600/[0.08] transition-transform duration-500 group-hover:scale-110 group-hover:rotate-6"
+                />
+
+                <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-gradient-to-br from-indigo-300/0 to-blue-300/0 blur-2xl transition-all duration-300 group-hover:from-indigo-300/30 group-hover:to-blue-200/20" />
+
+                <div className="relative">
+
+                  <div className="flex items-start justify-between">
+
+                    <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-600 text-white shadow-md shadow-indigo-900/20 transition-transform duration-300 group-hover:scale-105 group-hover:-rotate-3">
+                      <ShieldCheck size={26} />
+                    </div>
+
+                    <ArrowRight
+                      size={20}
+                      className="text-indigo-300 transition-all duration-300 group-hover:translate-x-1 group-hover:text-indigo-600"
+                    />
+
+                  </div>
+
+                  <h2 className="mt-7 text-xl font-bold tracking-tight text-slate-900">
+                    Administration
+                  </h2>
+
+                  <p className="mt-2.5 text-sm leading-6 text-slate-500">
+                    Manage system-wide settings,
+                    users, and administrative
+                    operations.
+                  </p>
+
+                  <div className="mt-6 inline-flex items-center gap-1.5 text-sm font-semibold text-indigo-600">
+                    Open Administration
+
+                    <ArrowRight
+                      size={14}
+                      className="transition-transform duration-300 group-hover:translate-x-1"
+                    />
+
+                  </div>
+
+                </div>
+
               </button>
             )}
 

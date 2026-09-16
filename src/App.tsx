@@ -7,10 +7,14 @@ import {
 import MainLayout from "./components/layout/MainLayout";
 
 import ProtectedRoute from "./components/auth/ProtectedRoute";
+import RequireAdmin from "./components/auth/RequireAdmin";
 import RequireIAO from "./components/auth/RequireIAO";
 
 import Login from "./pages/Login/Login";
 import System from "./pages/System/System";
+import Admin from "./pages/Admin/Admin";
+import UserManagement from "./pages/Admin/UserManagement";
+import AuditLogs from "./pages/Admin/AuditLogs";
 import POS from "./pages/POS/POS";
 import POSHistory from "./pages/POS/POSHistory";
 import IAOOutletOrders from "./pages/IAOOutletOrders/IAOOutletOrders";
@@ -52,6 +56,24 @@ function App() {
                 path="/system"
                 element={<System />}
               />
+
+              {/* Administration (ADMIN only) */}
+              <Route element={<RequireAdmin />}>
+                <Route
+                  path="/admin"
+                  element={<Admin />}
+                />
+
+                <Route
+                  path="/admin/users"
+                  element={<UserManagement />}
+                />
+
+                <Route
+                  path="/admin/audit-logs"
+                  element={<AuditLogs />}
+                />
+              </Route>
 
               {/* IAO outlet orders (assigned IAO area only) */}
               <Route element={<RequireIAO />}>
