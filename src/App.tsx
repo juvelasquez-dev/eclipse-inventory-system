@@ -7,11 +7,14 @@ import {
 import MainLayout from "./components/layout/MainLayout";
 
 import ProtectedRoute from "./components/auth/ProtectedRoute";
+import RequireIAO from "./components/auth/RequireIAO";
 
 import Login from "./pages/Login/Login";
 import System from "./pages/System/System";
 import POS from "./pages/POS/POS";
 import POSHistory from "./pages/POS/POSHistory";
+import IAOOutletOrders from "./pages/IAOOutletOrders/IAOOutletOrders";
+import IAOOutletHistory from "./pages/IAOOutletHistory/IAOOutletHistory";
 
 import Dashboard from "./pages/Inventory/Dashboard";
 import Products from "./pages/Inventory/Products";
@@ -49,6 +52,19 @@ function App() {
                 path="/system"
                 element={<System />}
               />
+
+              {/* IAO outlet orders (assigned IAO area only) */}
+              <Route element={<RequireIAO />}>
+                <Route
+                  path="/iao-outlet-orders"
+                  element={<IAOOutletOrders />}
+                />
+
+                <Route
+                  path="/iao-outlet-orders/history"
+                  element={<IAOOutletHistory />}
+                />
+              </Route>
 
               {/* Inventory System */}
               <Route

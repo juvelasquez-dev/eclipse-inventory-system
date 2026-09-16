@@ -371,6 +371,10 @@ textarea {
   display: none;
 }
 
+.iao-receipt {
+  display: none;
+}
+
 @media print {
   @page {
     size: 80mm auto;
@@ -398,7 +402,8 @@ textarea {
   }
 
   /* Show only the receipt, rendered via portal into document.body. */
-  .dr-receipt {
+  .dr-receipt,
+  .iao-receipt {
     display: block !important;
     visibility: visible !important;
 
@@ -423,7 +428,8 @@ textarea {
     overflow: visible !important;
   }
 
-  .dr-receipt * {
+  .dr-receipt *,
+  .iao-receipt * {
     visibility: visible !important;
     box-sizing: border-box;
   }
@@ -610,5 +616,103 @@ textarea {
   .dr-item-row {
     break-inside: avoid;
     page-break-inside: avoid;
+  }
+
+  /* IAO outlet-order receipt. Kept separate from POS receipt markup. */
+  .iao-receipt__header,
+  .iao-receipt__document,
+  .iao-receipt__footer {
+    text-align: center;
+  }
+
+  .iao-receipt p {
+    margin: 0;
+  }
+
+  .iao-receipt__brand {
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 1px;
+  }
+
+  .iao-receipt__divider {
+    height: 0;
+    margin: 6px 0;
+    border: 0;
+    border-top: 1px dashed #000;
+  }
+
+  .iao-receipt__document {
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .iao-receipt__document-sub {
+    margin-top: 4px;
+    font-size: 10px;
+    font-weight: 400;
+    letter-spacing: 0.5px;
+  }
+
+  .iao-receipt__details > div,
+  .iao-receipt__total {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin: 2px 0;
+  }
+
+  .iao-receipt__details strong {
+    min-width: 0;
+    padding-left: 8px;
+    font-weight: 400;
+    text-align: right;
+    overflow-wrap: anywhere;
+  }
+
+  .iao-receipt__item {
+    display: grid;
+    grid-template-columns: minmax(0, 40%) 15% 20% 25%;
+    align-items: start;
+    margin: 4px 0;
+    font-size: 10px;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .iao-receipt__item--head {
+    margin-bottom: 4px;
+    font-weight: 700;
+  }
+
+  .iao-receipt__item > :not(:first-child) {
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  .iao-receipt__item > :nth-child(2) {
+    text-align: center;
+  }
+
+  .iao-receipt__item span:first-child {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .iao-receipt__item small {
+    display: block;
+    font-size: 9px;
+  }
+
+  .iao-receipt__total {
+    margin: 4px 0;
+    font-size: 14px;
+    font-weight: 700;
+  }
+
+  .iao-receipt__footer {
+    margin-top: 4px;
+    font-size: 10px;
+    line-height: 1.4;
   }
 }

@@ -9,12 +9,15 @@ import {
   Receipt,
   MapPin,
   Truck,
+  ClipboardList,
 } from "lucide-react";
 
 import { supabase } from "../../lib/supabase";
+import { useUserArea } from "../../hooks/useUserArea";
 
 export default function System() {
   const navigate = useNavigate();
+  const { areaCode } = useUserArea();
 
   async function handleLogout() {
     const { error } =
@@ -160,7 +163,11 @@ export default function System() {
           </div>
 
           {/* System Options */}
-          <div className="mt-14 grid grid-cols-1 gap-6 md:grid-cols-3">
+          <div className={`mt-14 grid grid-cols-1 gap-6 md:grid-cols-3 ${
+              areaCode === "IAO"
+                ? "lg:grid-cols-4"
+                : ""
+            }`}>
 
             {/* Inventory */}
             <button
@@ -325,6 +332,41 @@ export default function System() {
               </div>
 
             </button>
+
+            {/* IAO Outlet Orders (assigned IAO area only) */}
+            {areaCode === "IAO" && (
+              <button
+                type="button"
+                onClick={() => navigate("/iao-outlet-orders")}
+                className="group relative overflow-hidden rounded-3xl border border-cyan-100 bg-gradient-to-b from-white to-cyan-50/40 p-8 text-left shadow-sm transition-all duration-300 hover:-translate-y-1.5 hover:border-cyan-300 hover:shadow-xl hover:shadow-cyan-900/10"
+              >
+                <ClipboardList
+                  size={140}
+                  strokeWidth={1}
+                  className="pointer-events-none absolute -bottom-6 -right-6 text-cyan-600/[0.08] transition-transform duration-500 group-hover:scale-110 group-hover:rotate-6"
+                />
+                <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-gradient-to-br from-cyan-300/0 to-sky-300/0 blur-2xl transition-all duration-300 group-hover:from-cyan-300/30 group-hover:to-sky-200/20" />
+                <div className="relative">
+                  <div className="flex items-start justify-between">
+                    <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-500 to-sky-600 text-white shadow-md shadow-cyan-900/20 transition-transform duration-300 group-hover:scale-105 group-hover:-rotate-3">
+                      <ClipboardList size={26} />
+                    </div>
+                    <ArrowRight size={20} className="text-cyan-300 transition-all duration-300 group-hover:translate-x-1 group-hover:text-cyan-600" />
+                  </div>
+                  <h2 className="mt-7 text-xl font-bold tracking-tight text-slate-900">
+                    IAO Outlet Orders
+                  </h2>
+                  <p className="mt-2.5 text-sm leading-6 text-slate-500">
+                    Create outlet-specific orders,
+                    prices, and printable receipts.
+                  </p>
+                  <div className="mt-6 inline-flex items-center gap-1.5 text-sm font-semibold text-cyan-600">
+                    Open IAO Orders
+                    <ArrowRight size={14} className="transition-transform duration-300 group-hover:translate-x-1" />
+                  </div>
+                </div>
+              </button>
+            )}
 
           </div>
 
