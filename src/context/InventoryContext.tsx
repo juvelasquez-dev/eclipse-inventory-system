@@ -64,6 +64,8 @@ interface InventoryContextType {
     id: string
   ) => Promise<boolean>;
 
+  refreshInventory: () => Promise<void>;
+
   refreshOutlets: () => Promise<void>;
 }
 
@@ -223,6 +225,32 @@ export function InventoryProvider({
     );
   }
 
+  async function loadTransactions() {
+    const {
+      data: transactionData,
+      error: transactionError,
+    } = await supabase
+      .from("transactions")
+      .select("*")
+      .order("date", {
+        ascending: false,
+      });
+
+    if (transactionError) {
+      console.error(
+        "Error loading transactions:",
+        transactionError
+      );
+      return;
+    }
+
+    setTransactions(
+      (transactionData ?? []).map(
+        mapTransaction
+      )
+    );
+  }
+
   /*
    * Load all data from Supabase.
    */
@@ -271,31 +299,7 @@ export function InventoryProvider({
         );
       }
 
-      /*
-       * Load transactions.
-       */
-      const {
-        data: transactionData,
-        error: transactionError,
-      } = await supabase
-        .from("transactions")
-        .select("*")
-        .order("date", {
-          ascending: false,
-        });
-
-      if (transactionError) {
-        console.error(
-          "Error loading transactions:",
-          transactionError
-        );
-      } else {
-        setTransactions(
-          (transactionData ?? []).map(
-            mapTransaction
-          )
-        );
-      }
+      await loadTransactions();
 
       /*
        * Load outlets.
@@ -818,6 +822,9 @@ export function InventoryProvider({
         addOutlet,
         updateOutlet,
         deleteOutlet,
+
+        refreshInventory:
+          loadTransactions,
 
         refreshOutlets:
           loadOutlets,

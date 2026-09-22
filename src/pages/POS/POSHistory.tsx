@@ -8,6 +8,7 @@ import Select from "../../components/ui/Select";
 import DeliveryReceiptPrint, {
   type ReceiptData,
 } from "../../components/pos/DeliveryReceiptPrint";
+import { useInventoryContext } from "../../context/InventoryContext";
 import { useToast } from "../../context/ToastContext";
 import { supabase } from "../../lib/supabase";
 
@@ -15,6 +16,9 @@ interface POSHistoryRow extends ReceiptData {
   id: string;
   cashierUsername: string;
   transactionStatus: string;
+  cancelledAt: string | null;
+  cancelledByUsername: string;
+  cancellationReason: string;
 }
 
 function getDisplayReceiptNumber(row: any) {
@@ -23,7 +27,7 @@ function getDisplayReceiptNumber(row: any) {
     row.receipt_number !== null &&
     row.receipt_number !== undefined
   ) {
-    return `${row.area_code}-${row.receipt_number}`;
+    return `${row.area_code}-${String(row.receipt_number).padStart(4, "0")}`;
   }
 
   if (
@@ -39,7 +43,8 @@ function getDisplayReceiptNumber(row: any) {
 function mapHistoryRow(
   row: any,
   itemRows: any[],
-  cashierUsername: string
+  cashierUsername: string,
+  cancelledByUsername: string
 ): POSHistoryRow {
   const items = itemRows.map(
     (item: any) => ({
@@ -70,6 +75,9 @@ function mapHistoryRow(
     subtotal: Number(row.subtotal),
     changeAmount: Number(row.change_amount),
     transactionStatus: row.transaction_status ?? "",
+    cancelledAt: row.cancelled_at ?? null,
+    cancelledByUsername,
+    cancellationReason: row.cancellation_reason ?? "",
   };
 }
 
@@ -194,6 +202,7 @@ const PAGE_SIZE_OPTIONS = [10, 25, 50];
 export default function POSHistory() {
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const { refreshInventory } = useInventoryContext();
   const [transactions, setTransactions] =
     useState<POSHistoryRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -207,6 +216,14 @@ export default function POSHistory() {
     useState<ReceiptData | null>(null);
   const [printRequested, setPrintRequested] =
     useState(false);
+  const [cancellationTarget, setCancellationTarget] =
+    useState<POSHistoryRow | null>(null);
+  const [cancellationReason, setCancellationReason] =
+    useState("");
+  const [isCancelling, setIsCancelling] =
+    useState(false);
+  const [historyRefreshVersion, setHistoryRefreshVersion] =
+    useState(0);
 
   /*
    * =========================================================
@@ -258,7 +275,7 @@ export default function POSHistory() {
       const { data, error } = await supabase
         .from("pos_transactions")
         .select(
-          "id, delivery_receipt_sequence, area_code, receipt_number, created_by, customer_name, customer_address, customer_phone, subtotal, amount_received, change_amount, payment_method, transaction_status, created_at"
+          "id, delivery_receipt_sequence, area_code, receipt_number, created_by, customer_name, customer_address, customer_phone, subtotal, amount_received, change_amount, payment_method, transaction_status, created_at, cancelled_at, cancelled_by, cancellation_reason"
         )
         .order("created_at", {
           ascending: false,
@@ -315,7 +332,10 @@ export default function POSHistory() {
       const cashierUserIds = Array.from(
         new Set(
           (data ?? [])
-            .map((row) => row.created_by)
+            .flatMap((row) => [
+              row.created_by,
+              row.cancelled_by,
+            ])
             .filter(Boolean)
         )
       );
@@ -369,7 +389,13 @@ export default function POSHistory() {
             ) ||
               (row.created_by === user.id
                 ? currentUsername
-                : "Unknown cashier")
+                : "Unknown cashier"),
+            cashierUsernameById.get(
+              row.cancelled_by
+            ) ||
+              (row.cancelled_by === user.id
+                ? currentUsername
+                : "Unknown user")
           )
         )
       );
@@ -377,7 +403,7 @@ export default function POSHistory() {
     }
 
     void loadTransactions();
-  }, [navigate, showToast]);
+  }, [navigate, showToast, historyRefreshVersion]);
 
   /*
    * =========================================================
@@ -510,21 +536,25 @@ export default function POSHistory() {
 
   const summary = useMemo(() => {
     const totalTransactions = filteredTransactions.length;
+    const completedTransactions = filteredTransactions.filter(
+      (transaction) =>
+        transaction.transactionStatus === "COMPLETED"
+    );
 
-    const totalSales = filteredTransactions.reduce(
+    const totalSales = completedTransactions.reduce(
       (total, transaction) => total + transaction.subtotal,
       0
     );
 
-    const totalItemsSold = filteredTransactions.reduce(
+    const totalItemsSold = completedTransactions.reduce(
       (total, transaction) =>
         total + getTotalQuantity(transaction.items),
       0
     );
 
     const averageValue =
-      totalTransactions > 0
-        ? totalSales / totalTransactions
+      completedTransactions.length > 0
+        ? totalSales / completedTransactions.length
         : 0;
 
     return {
@@ -600,6 +630,54 @@ export default function POSHistory() {
   function printTransaction(transaction: POSHistoryRow) {
     setReceipt(transaction);
     setPrintRequested(true);
+  }
+
+  function openCancellation(transaction: POSHistoryRow) {
+    setCancellationTarget(transaction);
+    setCancellationReason("");
+  }
+
+  function closeCancellation() {
+    if (isCancelling) return;
+    setCancellationTarget(null);
+    setCancellationReason("");
+  }
+
+  async function cancelTransaction() {
+    if (!cancellationTarget || isCancelling) return;
+
+    setIsCancelling(true);
+
+    try {
+      const { data, error } = await supabase.rpc(
+        "cancel_pos_transaction",
+        {
+          p_transaction_id: cancellationTarget.id,
+          p_cancellation_reason: cancellationReason,
+        }
+      );
+
+      if (error) throw error;
+
+      await refreshInventory();
+      setSelectedTransaction(null);
+      setCancellationTarget(null);
+      setCancellationReason("");
+      setHistoryRefreshVersion((version) => version + 1);
+      showToast(
+        `Order ${(data as { display_receipt_number?: string } | null)?.display_receipt_number ?? cancellationTarget.deliveryReceiptNumber} cancelled and inventory restored.`
+      );
+    } catch (error) {
+      console.error("Unable to cancel POS transaction:", error);
+      showToast(
+        error instanceof Error
+          ? error.message
+          : "Unable to cancel this POS transaction.",
+        "error"
+      );
+    } finally {
+      setIsCancelling(false);
+    }
   }
 
   return (
@@ -736,6 +814,7 @@ export default function POSHistory() {
                 options={[
                   { label: "All Statuses", value: "ALL" },
                   { label: "Completed", value: "COMPLETED" },
+                  { label: "Cancelled", value: "CANCELLED" },
                 ]}
               />
 
@@ -891,18 +970,33 @@ export default function POSHistory() {
                           {formatPaymentMethod(transaction.paymentMethod)}
                         </td>
                         <td className="px-4 py-4">
-                          <span className="inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-200">
+                          <span className={
+                            transaction.transactionStatus === "CANCELLED"
+                              ? "inline-flex items-center rounded-full bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700 ring-1 ring-inset ring-red-200"
+                              : "inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-200"
+                          }>
                             {transaction.transactionStatus}
                           </span>
                         </td>
                         <td className="px-4 py-4 text-center">
-                          <button
-                            type="button"
-                            onClick={() => openDetails(transaction)}
-                            className="text-xs font-semibold text-emerald-600 hover:text-emerald-700"
-                          >
-                            View Details
-                          </button>
+                          <div className="flex justify-center gap-3">
+                            <button
+                              type="button"
+                              onClick={() => openDetails(transaction)}
+                              className="text-xs font-semibold text-emerald-600 hover:text-emerald-700"
+                            >
+                              View Details
+                            </button>
+                            {transaction.transactionStatus === "COMPLETED" && (
+                              <button
+                                type="button"
+                                onClick={() => openCancellation(transaction)}
+                                className="text-xs font-semibold text-red-600 hover:text-red-700"
+                              >
+                                Cancel Order
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -1026,6 +1120,32 @@ export default function POSHistory() {
               </div>
             </div>
 
+            {selectedTransaction.transactionStatus === "CANCELLED" && (
+              <div className="rounded-xl border border-red-200 bg-red-50 p-4">
+                <h3 className="text-sm font-semibold text-red-900">
+                  Cancellation Information
+                </h3>
+                <div className="mt-3 grid grid-cols-2 gap-2.5 text-sm">
+                  <span className="text-red-700">Cancelled By</span>
+                  <span className="text-right text-slate-900">
+                    {selectedTransaction.cancelledByUsername}
+                  </span>
+
+                  <span className="text-red-700">Cancelled At</span>
+                  <span className="text-right text-slate-900">
+                    {selectedTransaction.cancelledAt
+                      ? new Date(selectedTransaction.cancelledAt).toLocaleString("en-PH")
+                      : "-"}
+                  </span>
+
+                  <span className="text-red-700">Reason</span>
+                  <span className="text-right text-slate-900">
+                    {selectedTransaction.cancellationReason || "-"}
+                  </span>
+                </div>
+              </div>
+            )}
+
             <div className="overflow-x-auto rounded-xl border border-slate-200">
               <table className="w-full min-w-[520px] border-collapse text-sm">
                 <thead className="border-b border-slate-200 bg-slate-50/80">
@@ -1075,6 +1195,61 @@ export default function POSHistory() {
                 onClick={() => printTransaction(selectedTransaction)}
               >
                 Reprint Receipt
+              </Button>
+
+              {selectedTransaction.transactionStatus === "COMPLETED" && (
+                <Button
+                  type="button"
+                  variant="danger"
+                  onClick={() => openCancellation(selectedTransaction)}
+                >
+                  Cancel Order
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal
+        open={cancellationTarget !== null}
+        title="Cancel this order?"
+        onClose={closeCancellation}
+      >
+        {cancellationTarget && (
+          <div className="space-y-4">
+            <p className="text-sm leading-6 text-slate-600">
+              This order will be marked CANCELLED and all items will be returned to inventory. The original receipt will remain in history. Create a new order for any revised customer request.
+            </p>
+
+            <Input
+              label="Cancellation reason (optional)"
+              type="text"
+              value={cancellationReason}
+              onChange={(event) =>
+                setCancellationReason(event.target.value)
+              }
+              placeholder="Customer requested order changes"
+              disabled={isCancelling}
+            />
+
+            <div className="flex flex-col-reverse justify-end gap-3 sm:flex-row">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={closeCancellation}
+                disabled={isCancelling}
+              >
+                Keep Order
+              </Button>
+
+              <Button
+                type="button"
+                variant="danger"
+                onClick={() => void cancelTransaction()}
+                disabled={isCancelling}
+              >
+                {isCancelling ? "Cancelling..." : "Cancel Order"}
               </Button>
             </div>
           </div>
