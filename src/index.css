@@ -603,10 +603,15 @@ textarea {
     font-weight: 700;
   }
 
-  /* Avoid awkward page/section splits */
+  /*
+   * Avoid awkward page/section splits.
+   * The items container is intentionally excluded: forcing the whole
+   * item table to stay together pushes it entirely to a new page when
+   * it doesn't fit the remaining space, leaving a blank gap after the
+   * header/customer section. Per-row avoidance below is enough.
+   */
   .dr-header,
   .dr-info,
-  .dr-items,
   .dr-totals,
   .dr-footer {
     break-inside: avoid;
