@@ -20,6 +20,7 @@ const ACTION_OPTIONS = [
   { label: "Role Changed", value: "USER_ROLE_CHANGED" },
   { label: "Area Changed", value: "USER_AREA_CHANGED" },
   { label: "Status Changed", value: "USER_STATUS_CHANGED" },
+  { label: "User Created", value: "USER_CREATED" },
 ];
 
 /*

@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff, Loader2, Plus } from "lucide-react";
 
+import Input from "../../components/ui/Input";
+import Modal from "../../components/ui/Modal";
 import Select from "../../components/ui/Select";
 import Button from "../../components/ui/Button";
 import { useToast } from "../../context/ToastContext";
@@ -14,6 +16,24 @@ interface AdminUserRow {
   status: "ACTIVE" | "INACTIVE";
   areaCode: string | null;
 }
+
+interface NewUserForm {
+  username: string;
+  email: string;
+  password: string;
+  role: "ADMIN" | "STAFF";
+  areaCode: string;
+  status: "ACTIVE" | "INACTIVE";
+}
+
+const EMPTY_NEW_USER: NewUserForm = {
+  username: "",
+  email: "",
+  password: "",
+  role: "STAFF",
+  areaCode: "IAO",
+  status: "ACTIVE",
+};
 
 const ROLE_OPTIONS = [
   { label: "ADMIN", value: "ADMIN" },
@@ -52,6 +72,10 @@ export default function UserManagement() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [savingUsername, setSavingUsername] = useState<string | null>(null);
+  const [addUserOpen, setAddUserOpen] = useState(false);
+  const [creatingUser, setCreatingUser] = useState(false);
+  const [showTemporaryPassword, setShowTemporaryPassword] = useState(false);
+  const [newUser, setNewUser] = useState<NewUserForm>(EMPTY_NEW_USER);
 
   async function loadUsers() {
     setLoading(true);
@@ -75,6 +99,87 @@ export default function UserManagement() {
   useEffect(() => {
     void loadUsers();
   }, []);
+
+  function closeAddUserModal() {
+    if (creatingUser) {
+      return;
+    }
+
+    setAddUserOpen(false);
+    setNewUser(EMPTY_NEW_USER);
+    setShowTemporaryPassword(false);
+  }
+
+  async function handleCreateUser(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const username = newUser.username.trim();
+    const email = newUser.email.trim();
+
+    if (!username || !email || !newUser.password || !newUser.areaCode) {
+      setNewUser((current) => ({ ...current, password: "" }));
+      setShowTemporaryPassword(false);
+      showToast("Complete all fields before creating the user.", "error");
+      return;
+    }
+
+    setCreatingUser(true);
+
+    try {
+      const { data, error } = await supabase.functions.invoke(
+        "admin-create-user",
+        {
+          body: {
+            username,
+            email,
+            temporaryPassword: newUser.password,
+            role: newUser.role,
+            area: newUser.areaCode,
+            status: newUser.status,
+          },
+        }
+      );
+
+      if (error) {
+        let message = "Unable to create user. Please try again.";
+        const context = (error as { context?: unknown }).context;
+
+        if (context instanceof Response) {
+          const responseBody = (await context.clone().json().catch(() => null)) as
+            | { error?: unknown }
+            | null;
+
+          if (typeof responseBody?.error === "string") {
+            message = responseBody.error;
+          }
+        }
+
+        showToast(message, "error");
+        return;
+      }
+
+      if ((data as { pending?: boolean } | null)?.pending) {
+        setNewUser((current) => ({ ...current, password: "" }));
+        showToast(
+          "Creation could not be confirmed. Verify the Auth account before retrying.",
+          "error"
+        );
+        return;
+      }
+
+      setNewUser(EMPTY_NEW_USER);
+      setShowTemporaryPassword(false);
+      setAddUserOpen(false);
+      showToast("User created successfully.", "success");
+      await loadUsers();
+    } catch {
+      showToast("Unable to create user. Please try again.", "error");
+    } finally {
+      setCreatingUser(false);
+      setNewUser((current) => ({ ...current, password: "" }));
+      setShowTemporaryPassword(false);
+    }
+  }
 
   async function handleRoleChange(
     username: string,
@@ -183,9 +288,19 @@ export default function UserManagement() {
       </div>
 
       <div className="mx-auto w-full max-w-5xl flex-1 px-4 py-10 sm:px-6">
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-          User Management
-        </h1>
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+            User Management
+          </h1>
+          <Button
+            type="button"
+            onClick={() => setAddUserOpen(true)}
+            disabled={loading}
+          >
+            <Plus size={16} className="mr-2" />
+            Add User
+          </Button>
+        </div>
 
         <p className="mt-2 text-sm text-slate-500">
           View system users and manage their role and area assignment.
@@ -307,6 +422,121 @@ export default function UserManagement() {
           </Button>
         </div>
       </div>
+
+      <Modal
+        open={addUserOpen}
+        title="Add User"
+        onClose={closeAddUserModal}
+      >
+        <form onSubmit={handleCreateUser} className="space-y-4">
+          <Input
+            id="new-user-username"
+            label="Username"
+            autoComplete="username"
+            required
+            value={newUser.username}
+            onChange={(event) =>
+              setNewUser((current) => ({ ...current, username: event.target.value }))
+            }
+            disabled={creatingUser}
+          />
+
+          <Input
+            id="new-user-email"
+            label="Email"
+            type="email"
+            autoComplete="email"
+            required
+            value={newUser.email}
+            onChange={(event) =>
+              setNewUser((current) => ({ ...current, email: event.target.value }))
+            }
+            disabled={creatingUser}
+          />
+
+          <div>
+            <Input
+              id="new-user-temporary-password"
+              label="Temporary Password"
+              type={showTemporaryPassword ? "text" : "password"}
+              autoComplete="new-password"
+              required
+              minLength={8}
+              helperText="Use at least 8 characters."
+              value={newUser.password}
+              onChange={(event) =>
+                setNewUser((current) => ({ ...current, password: event.target.value }))
+              }
+              disabled={creatingUser}
+            />
+            <button
+              type="button"
+              onClick={() => setShowTemporaryPassword((visible) => !visible)}
+              aria-label={showTemporaryPassword ? "Hide password" : "Show password"}
+              title={showTemporaryPassword ? "Hide password" : "Show password"}
+              className="mt-1 inline-flex items-center gap-1 rounded px-1 py-1 text-xs font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+              disabled={creatingUser}
+            >
+              {showTemporaryPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              {showTemporaryPassword ? "Hide password" : "Show password"}
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <Select
+              id="new-user-role"
+              label="Role"
+              options={ROLE_OPTIONS}
+              value={newUser.role}
+              onChange={(event) =>
+                setNewUser((current) => ({
+                  ...current,
+                  role: event.target.value as NewUserForm["role"],
+                }))
+              }
+              disabled={creatingUser}
+            />
+            <Select
+              id="new-user-area"
+              label="Area"
+              options={AREA_OPTIONS}
+              value={newUser.areaCode}
+              onChange={(event) =>
+                setNewUser((current) => ({ ...current, areaCode: event.target.value }))
+              }
+              disabled={creatingUser}
+              required
+            />
+            <Select
+              id="new-user-status"
+              label="Status"
+              options={STATUS_OPTIONS}
+              value={newUser.status}
+              onChange={(event) =>
+                setNewUser((current) => ({
+                  ...current,
+                  status: event.target.value as NewUserForm["status"],
+                }))
+              }
+              disabled={creatingUser}
+            />
+          </div>
+
+          <div className="flex justify-end gap-3 pt-2">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={closeAddUserModal}
+              disabled={creatingUser}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={creatingUser}>
+              {creatingUser ? "Creating..." : "Create User"}
+            </Button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }
