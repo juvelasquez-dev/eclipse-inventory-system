@@ -120,6 +120,16 @@ export default function ProductForm({
     flavor,
     products
   );
+  const duplicateProduct =
+    initialValues && existingProduct?.id === initialValues.id
+      ? findExistingProduct(
+          category,
+          flavor,
+          products.filter(
+            (product) => product.id !== initialValues.id
+          )
+        )
+      : existingProduct;
 
   // Determine product code and name
   let generatedCode = "";
@@ -188,9 +198,9 @@ export default function ProductForm({
     }
 
     // Check if this product already exists
-    if (existingProduct) {
+    if (duplicateProduct) {
       setError(
-        `This product already exists: ${existingProduct.code} / ${existingProduct.name}`
+        `This product already exists: ${duplicateProduct.code} / ${duplicateProduct.name}`
       );
       return;
     }
