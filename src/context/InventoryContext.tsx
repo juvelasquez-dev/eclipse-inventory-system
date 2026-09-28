@@ -734,60 +734,33 @@ export function InventoryProvider({
       return false;
     }
 
-    if (transaction.type === "OUT") {
-      const { data, error } =
-        await supabase.rpc(
-          "create_stock_out_transaction",
-          {
-            p_transaction_id:
-              transaction.id,
-            p_product_id:
-              transaction.productId,
-            p_quantity:
-              transaction.quantity,
+    const rpcName =
+      transaction.type === "OUT"
+        ? "create_stock_out_transaction"
+        : transaction.type === "IN"
+          ? "create_stock_in_transaction"
+          : "create_stock_adjustment_transaction";
+
+    const rpcArguments =
+      transaction.type === "OUT"
+        ? {
+            p_transaction_id: transaction.id,
+            p_product_id: transaction.productId,
+            p_quantity: transaction.quantity,
             p_date: transaction.date,
-            p_remarks:
-              transaction.remarks ?? "",
+            p_remarks: transaction.remarks ?? "",
           }
-        );
+        : {
+            p_product_id: transaction.productId,
+            p_quantity: transaction.quantity,
+            p_date: transaction.date,
+            p_remarks: transaction.remarks ?? "",
+          };
 
-      if (error) {
-        console.error(
-          "Error adding transaction:",
-          error
-        );
-
-        return false;
-      }
-
-      const row = Array.isArray(data)
-        ? data[0]
-        : data;
-
-      setTransactions((prev) => [
-        ...prev,
-        mapTransaction(row),
-      ]);
-
-      return true;
-    }
-
-    const { data, error } =
-      await supabase
-        .from("transactions")
-        .insert({
-          id: transaction.id,
-          product_id:
-            transaction.productId,
-          type: transaction.type,
-          quantity:
-            transaction.quantity,
-          date: transaction.date,
-          remarks:
-            transaction.remarks ?? "",
-        })
-        .select()
-        .single();
+    const { data, error } = await supabase.rpc(
+      rpcName,
+      rpcArguments
+    );
 
     if (error) {
       console.error(
@@ -798,9 +771,13 @@ export function InventoryProvider({
       return false;
     }
 
+    const row = Array.isArray(data)
+      ? data[0]
+      : data;
+
     setTransactions((prev) => [
       ...prev,
-      mapTransaction(data),
+      mapTransaction(row),
     ]);
 
     return true;
