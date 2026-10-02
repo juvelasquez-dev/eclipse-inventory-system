@@ -1,75 +1,418 @@
-# React + TypeScript + Vite
+# Eclipse Inventory & Distribution Management System (EIDMS)
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+EIDMS is an internal **Inventory, Distribution, and Point-of-Sale Management System** developed for **Eclipse Food Trading OPC**, a distributor of Dan Eric's Grand Ice Cream.
 
-Currently, two official plugins are available:
+The system is designed to help manage inventory movements, product information, stock levels, point-of-sale transactions, outlet orders, users, and distribution operations through a centralized web application.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## 🚀 Live System
 
-## React Compiler
+**Production:**
+https://eclipse-inventory-system.vercel.app
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+> **Note:** This is an internal business application. Access to the production system is restricted to authorized users.
 
-## Expanding the ESLint configuration
+---
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+## 📌 Features
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+### 📦 Inventory Management
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+* Product management
+* Stock In for incoming deliveries
+* Stock Out for warehouse inventory movements
+* Stock adjustments
+* Current inventory monitoring
+* Inventory transaction history
+* Inventory movement tracking
+* Low-stock monitoring
+* Pagination and inventory statistics
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+### 🛒 Point of Sale
 
+* POS transaction processing
+* Product selection and cart management
+* Transaction totals
+* Receipt generation
+* Receipt numbering by operating area
+* POS transaction history
+* Transaction cancellation
+* Automatic inventory deduction after completed sales
+
+### 🏪 Outlet & Distribution Management
+
+* Outlet management
+* Area-based operations
+* Outlet ordering
+* Distribution-related inventory movements
+* Operating-area attribution
+
+### 👥 User & System Administration
+
+* User authentication
+* User management
+* System administration
+* User account management
+* Supabase Auth integration
+
+### 📊 Reports & Data
+
+* Inventory history
+* Transaction history
+* Inventory statistics
+* Charts and dashboards
+* Excel import/export
+* Stock transaction importing
+
+---
+
+## 🏗️ System Architecture
+
+EIDMS uses a modern web application architecture:
+
+```text
+┌─────────────────────────────┐
+│        React Frontend       │
+│      TypeScript + Vite      │
+└──────────────┬──────────────┘
+               │
+               ▼
+┌─────────────────────────────┐
+│        Supabase Auth        │
+│      User Authentication    │
+└──────────────┬──────────────┘
+               │
+               ▼
+┌─────────────────────────────┐
+│      Supabase PostgreSQL    │
+│       Database + RLS        │
+└──────────────┬──────────────┘
+               │
+               ▼
+┌─────────────────────────────┐
+│    SECURITY DEFINER RPCs    │
+│   Validated Server Actions  │
+└─────────────────────────────┘
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+### Technology Stack
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+| Category               | Technology            |
+| ---------------------- | --------------------- |
+| Frontend               | React                 |
+| Language               | TypeScript            |
+| Build Tool             | Vite                  |
+| Styling                | Tailwind CSS          |
+| Routing                | React Router          |
+| Backend / Database     | Supabase              |
+| Database               | PostgreSQL            |
+| Authentication         | Supabase Auth         |
+| Authorization          | PostgreSQL RLS        |
+| Server-side Operations | SECURITY DEFINER RPCs |
+| Charts                 | Recharts              |
+| Icons                  | Lucide React          |
+| Excel Processing       | SheetJS (`xlsx`)      |
+| Hosting                | Vercel                |
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+---
 
+## 📁 Project Structure
+
+```text
+src/
+├── components/
+│   ├── common/
+│   ├── inventory/
+│   ├── pos/
+│   └── ...
+│
+├── contexts/
+│   └── InventoryProvider.tsx
+│
+├── hooks/
+│
+├── lib/
+│   ├── supabase.ts
+│   └── ...
+│
+├── pages/
+│   ├── Products/
+│   ├── Inventory/
+│   ├── StockIn/
+│   ├── StockOut/
+│   ├── POS/
+│   ├── History/
+│   └── ...
+│
+├── types/
+│
+├── App.tsx
+└── main.tsx
 ```
+
+---
+
+## 🔐 Security
+
+The application uses several layers of database and application security.
+
+### Supabase Row Level Security
+
+PostgreSQL Row Level Security (RLS) is used to control access to protected database resources.
+
+### Server-side Database Operations
+
+Critical operations are handled through PostgreSQL functions using `SECURITY DEFINER` where appropriate.
+
+These operations provide server-side validation for business-critical transactions such as:
+
+* POS transactions
+* Inventory movements
+* Receipt numbering
+* Stock operations
+
+### Authentication
+
+User authentication is handled through **Supabase Auth**.
+
+The application does not store user passwords directly in the application database.
+
+---
+
+## 🔄 Inventory & POS Integration
+
+One of the important parts of EIDMS is the integration between POS transactions and inventory.
+
+When a valid POS transaction is completed:
+
+```text
+POS Checkout
+     │
+     ▼
+Create POS Transaction
+     │
+     ▼
+Create Transaction Items
+     │
+     ▼
+Inventory OUT Movement
+     │
+     ▼
+Update Available Stock
+```
+
+This prevents completed sales from being disconnected from inventory records.
+
+---
+
+## 🧾 Receipt Numbering
+
+Receipt numbers are associated with the operating area rather than individual cashiers.
+
+Current area codes include:
+
+| Code | Area                 |
+| ---- | -------------------- |
+| IAO  | Siargao              |
+| CBR  | Cabadbaran           |
+| EFT  | Eclipse Food Trading |
+
+This allows transactions to be identified according to their operating area.
+
+---
+
+## 📊 Data Flow
+
+A simplified system flow:
+
+```text
+                    ┌───────────────┐
+                    │    Users      │
+                    └───────┬───────┘
+                            │
+                            ▼
+                    ┌───────────────┐
+                    │  Supabase     │
+                    │     Auth      │
+                    └───────┬───────┘
+                            │
+                            ▼
+┌─────────────┐      ┌───────────────┐      ┌─────────────┐
+│  Products   │─────▶│     EIDMS     │◀─────│  Inventory  │
+└─────────────┘      └───────┬───────┘      └─────────────┘
+                              │
+                    ┌─────────┴─────────┐
+                    ▼                   ▼
+             ┌─────────────┐     ┌─────────────┐
+             │     POS     │     │   Outlets   │
+             └──────┬──────┘     └─────────────┘
+                    │
+                    ▼
+             ┌─────────────┐
+             │ Transactions│
+             └─────────────┘
+```
+
+---
+
+## 🛠️ Local Development
+
+### Prerequisites
+
+Make sure you have installed:
+
+* Node.js
+* npm
+* Git
+
+### Clone the repository
+
+```bash
+git clone <YOUR_REPOSITORY_URL>
+cd <YOUR_REPOSITORY_NAME>
+```
+
+### Install dependencies
+
+```bash
+npm install
+```
+
+### Environment Variables
+
+Create a `.env.local` file:
+
+```env
+VITE_SUPABASE_URL=your_supabase_project_url
+VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+```
+
+> Never commit `.env.local` or other files containing private credentials to the repository.
+
+### Start the development server
+
+```bash
+npm run dev
+```
+
+The application will normally be available at:
+
+```text
+http://localhost:5173
+```
+
+---
+
+## 🧪 Available Scripts
+
+```bash
+npm run dev
+```
+
+Starts the Vite development server.
+
+```bash
+npm run build
+```
+
+Builds the application for production.
+
+```bash
+npm run lint
+```
+
+Runs ESLint checks.
+
+```bash
+npm run preview
+```
+
+Previews the production build locally.
+
+---
+
+## ☁️ Deployment
+
+The production frontend is deployed using **Vercel**.
+
+The application connects to the production Supabase project for:
+
+* Authentication
+* PostgreSQL database
+* Row Level Security
+* Database functions / RPCs
+
+Typical deployment flow:
+
+```text
+GitHub
+   │
+   ▼
+Vercel
+   │
+   ▼
+React + Vite Application
+   │
+   ▼
+Supabase
+   ├── Auth
+   ├── PostgreSQL
+   ├── RLS
+   └── RPC Functions
+```
+
+---
+
+## 🔒 Privacy & Data
+
+EIDMS is an internal business system and may process information associated with:
+
+* Employee/user accounts
+* Product and inventory records
+* Outlet information
+* POS transactions
+* Customer information recorded during transactions
+* Operational and transaction history
+
+Access to production data should be limited to authorized personnel.
+
+---
+
+## 📋 Development Status
+
+The system currently includes:
+
+* [x] Authentication
+* [x] Product management
+* [x] Inventory management
+* [x] Stock In
+* [x] Stock Out
+* [x] Stock adjustments
+* [x] POS transactions
+* [x] POS → Inventory integration
+* [x] Receipt numbering
+* [x] Transaction history
+* [x] Outlet management
+* [x] Outlet ordering
+* [x] User management
+* [x] System administration
+* [x] Excel import/export
+* [x] Production deployment
+
+Additional production hardening, privacy/compliance work, monitoring, and operational improvements may continue as the system evolves.
+
+---
+
+## 👨‍💻 Developer
+
+**Justine Velasquez**
+
+BS Information Technology
+Web & Systems Development
+
+---
+
+## 📄 License
+
+This software is proprietary and intended for internal use by **Eclipse Food Trading OPC**.
+
+Unauthorized copying, distribution, modification, or commercial use is prohibited unless authorized by the system owner.
