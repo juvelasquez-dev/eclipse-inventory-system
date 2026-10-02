@@ -2,14 +2,14 @@
 
 EIDMS is an internal **Inventory, Distribution, and Point-of-Sale Management System** developed for **Eclipse Food Trading OPC**, a distributor of Dan Eric's Grand Ice Cream.
 
-The system is designed to help manage inventory movements, product information, stock levels, point-of-sale transactions, outlet orders, users, and distribution operations through a centralized web application.
+The system is designed to manage inventory movements, products, stock levels, point-of-sale transactions, outlet orders, users, and distribution operations through a centralized web application.
 
 ## 🚀 Live System
 
 **Production:**
 https://eclipse-inventory-system.vercel.app
 
-> **Note:** This is an internal business application. Access to the production system is restricted to authorized users.
+> **Note:** EIDMS is an internal business application. Access to the production system is restricted to authorized users.
 
 ---
 
@@ -153,36 +153,38 @@ src/
 
 ## 🔐 Security
 
-The application uses several layers of database and application security.
+EIDMS uses multiple layers of application and database security.
 
-### Supabase Row Level Security
+### Authentication
 
-PostgreSQL Row Level Security (RLS) is used to control access to protected database resources.
+User authentication is handled through **Supabase Auth**.
+
+User passwords are managed by Supabase Auth rather than being stored directly by the application.
+
+### Row Level Security
+
+PostgreSQL **Row Level Security (RLS)** is used to enforce database-level access policies on protected resources.
 
 ### Server-side Database Operations
 
-Critical operations are handled through PostgreSQL functions using `SECURITY DEFINER` where appropriate.
+Selected business-critical operations are handled through PostgreSQL functions using `SECURITY DEFINER` where appropriate.
 
-These operations provide server-side validation for business-critical transactions such as:
+These operations provide server-side validation for operations such as:
 
 * POS transactions
 * Inventory movements
 * Receipt numbering
 * Stock operations
 
-### Authentication
-
-User authentication is handled through **Supabase Auth**.
-
-The application does not store user passwords directly in the application database.
+> Security configuration and database policies are subject to ongoing review and hardening.
 
 ---
 
 ## 🔄 Inventory & POS Integration
 
-One of the important parts of EIDMS is the integration between POS transactions and inventory.
+EIDMS integrates POS transactions with inventory management.
 
-When a valid POS transaction is completed:
+When a valid POS transaction is completed, the transaction flow includes:
 
 ```text
 POS Checkout
@@ -200,7 +202,7 @@ Inventory OUT Movement
 Update Available Stock
 ```
 
-This prevents completed sales from being disconnected from inventory records.
+This keeps completed sales and inventory movements synchronized within the system.
 
 ---
 
@@ -266,9 +268,11 @@ Make sure you have installed:
 
 ### Clone the repository
 
+Replace `<YOUR_GITHUB_USERNAME>` and `<YOUR_REPOSITORY_NAME>` with the actual GitHub repository information.
+
 ```bash
-git clone <YOUR_REPOSITORY_URL>
-cd <YOUR_REPOSITORY_NAME>
+git clone https://github.com/juvelasquez-dev/eclipse-inventory-system
+cd eclipse-inventory-system
 ```
 
 ### Install dependencies
@@ -279,7 +283,7 @@ npm install
 
 ### Environment Variables
 
-Create a `.env.local` file:
+Create a `.env.local` file in the project root:
 
 ```env
 VITE_SUPABASE_URL=your_supabase_project_url
@@ -304,11 +308,15 @@ http://localhost:5173
 
 ## 🧪 Available Scripts
 
+### Development
+
 ```bash
 npm run dev
 ```
 
 Starts the Vite development server.
+
+### Production Build
 
 ```bash
 npm run build
@@ -316,11 +324,15 @@ npm run build
 
 Builds the application for production.
 
+### Lint
+
 ```bash
 npm run lint
 ```
 
 Runs ESLint checks.
+
+### Preview
 
 ```bash
 npm run preview
@@ -334,12 +346,12 @@ Previews the production build locally.
 
 The production frontend is deployed using **Vercel**.
 
-The application connects to the production Supabase project for:
+The application connects to Supabase for:
 
 * Authentication
 * PostgreSQL database
 * Row Level Security
-* Database functions / RPCs
+* Database functions and RPCs
 
 Typical deployment flow:
 
@@ -366,20 +378,24 @@ Supabase
 
 EIDMS is an internal business system and may process information associated with:
 
-* Employee/user accounts
+* Employee and user accounts
 * Product and inventory records
 * Outlet information
 * POS transactions
 * Customer information recorded during transactions
 * Operational and transaction history
 
-Access to production data should be limited to authorized personnel.
+Production data should only be accessible to authorized personnel.
+
+Privacy and compliance requirements for the system are subject to the organization's applicable policies and legal requirements.
 
 ---
 
 ## 📋 Development Status
 
-The system currently includes:
+EIDMS is currently **deployed and operational for internal business use**.
+
+Implemented modules and functionality include:
 
 * [x] Authentication
 * [x] Product management
@@ -398,7 +414,7 @@ The system currently includes:
 * [x] Excel import/export
 * [x] Production deployment
 
-Additional production hardening, privacy/compliance work, monitoring, and operational improvements may continue as the system evolves.
+The system continues to undergo security hardening, privacy and compliance review, monitoring improvements, and other production-readiness improvements.
 
 ---
 
