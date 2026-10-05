@@ -3,7 +3,6 @@ import {
   AlertTriangle,
   ArrowRight,
   Download,
-  FileText,
   MapPin,
   Plus,
   RefreshCw,
@@ -18,7 +17,10 @@ import Button from "../../components/ui/Button";
 import Modal from "../../components/ui/Modal";
 import { useInventoryContext } from "../../context/InventoryContext";
 import type { Outlet } from "../../types/inventory";
-import { exportOutletsExcel } from "../../utils/outlets";
+import {
+  exportMissingDegicOutlets,
+  exportOutletsExcel,
+} from "../../utils/outlets";
 
 const AREA_CODES = ["IAO", "CBR", "EFT"] as const;
 const RECENT_DAYS = 30;
@@ -417,11 +419,6 @@ export default function OutletDashboard() {
               </div>
             </section>
 
-            <div className="flex flex-wrap gap-2">
-              <Button type="button" variant="secondary" onClick={() => setSelectedDetail({ type: "attention" })} className="gap-2">
-                <FileText size={16} /> Review Incomplete
-              </Button>
-            </div>
           </>
         )}
       </div>
@@ -440,7 +437,22 @@ export default function OutletDashboard() {
               </table>
             </div>
           )}
-          <div className="flex flex-col-reverse gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between"><Button type="button" variant="secondary" onClick={openOutlets}>Manage Outlets</Button><Button type="button" onClick={() => setSelectedDetail(null)}>Close</Button></div>
+          <div className="flex flex-col-reverse gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-wrap gap-2">
+              {selectedDetail?.type === "issue" && selectedDetail.label === "Missing DEGIC Number" && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => exportMissingDegicOutlets(detailOutlets)}
+                  className="gap-2"
+                >
+                  <Download size={16} /> Download Missing Rows
+                </Button>
+              )}
+              <Button type="button" variant="secondary" onClick={openOutlets}>Manage Outlets</Button>
+            </div>
+            <Button type="button" onClick={() => setSelectedDetail(null)}>Close</Button>
+          </div>
         </div>
       </Modal>
     </>
