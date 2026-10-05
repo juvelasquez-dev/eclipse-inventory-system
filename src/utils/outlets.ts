@@ -5,13 +5,11 @@ import type {
   OutletStatus,
 } from "../types/inventory";
 
-export type OutletAreaCode =
-  | "IAO"
-  | "CBR"
-  | "EFT";
+export type OutletAreaCode = "IAO" | "CBR" | "EFT";
 
 export interface OutletImportRow {
   rowNumber: number;
+  originalData?: Record<string, string>;
   outletName: string;
   contactPerson: string;
   degicNumber: string;
@@ -24,18 +22,25 @@ export interface OutletImportRow {
   status: string;
 }
 
-export interface OutletImportValidationResult
-  extends OutletImportRow {
+export interface OutletImportValidationResult extends OutletImportRow {
   valid: boolean;
   duplicate: boolean;
   errors: string[];
 }
 
-const VALID_AREAS = new Set<OutletAreaCode>([
-  "IAO",
-  "CBR",
-  "EFT",
-]);
+export interface OutletUpdateImportRow extends OutletImportRow {
+  outletId: string;
+}
+
+export interface OutletUpdateValidationResult extends OutletUpdateImportRow {
+  valid: boolean;
+  duplicate: boolean;
+  errors: string[];
+  rowStatus: "changed" | "unchanged" | "failed" | "updated";
+  changedFields: string[];
+}
+
+const VALID_AREAS = new Set<OutletAreaCode>(["IAO", "CBR", "EFT"]);
 
 function normalizeText(value: unknown): string {
   return String(value ?? "").trim();
@@ -53,84 +58,64 @@ export function validateOutletIdentification({
   const normalizedTin = normalizeText(tin);
   const normalizedIdType = normalizeText(idType);
   const normalizedIdNumber = normalizeText(idNumber);
-
-  if (normalizedTin) {
-    return "";
-  }
-
+  if (normalizedTin) return "";
   if (!normalizedIdType && !normalizedIdNumber) {
     return "Please provide a TIN or a valid ID Type and ID Number.";
   }
-
-  if (!normalizedIdType) {
-    return "ID Type is required when TIN is not provided.";
-  }
-
-  if (!normalizedIdNumber) {
-    return "ID Number is required when TIN is not provided.";
-  }
-
+  if (!normalizedIdType) return "ID Type is required when TIN is not provided.";
+  if (!normalizedIdNumber) return "ID Number is required when TIN is not provided.";
   return "";
 }
 
-function normalizeStatus(value: unknown): string {
-  const text = normalizeText(value).toLowerCase();
-
-  if (text === "inactive") {
-    return "Inactive";
-  }
-
-  return "Active";
-}
-
 function normalizeAreaCode(value: unknown): string {
-  const text = normalizeText(value).toUpperCase();
-
-  return VALID_AREAS.has(text as OutletAreaCode)
-    ? text
-    : text;
+  return normalizeText(value).toUpperCase();
 }
 
 function normalizeOutletKey(value: string): string {
   return value.trim().toLowerCase();
 }
 
-export function readOutletImportRows(
-  file: File
-): Promise<OutletImportRow[]> {
+function createOutletWorksheet(rows: Record<string, unknown>[]) {
+  const worksheet = XLSX.utils.json_to_sheet(rows);
+  worksheet["!cols"] = [{ hidden: true }];
+  return worksheet;
+}
+
+export function readOutletImportRows(file: File): Promise<OutletImportRow[]> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
 
     reader.onload = (event) => {
       try {
         const data = event.target?.result;
-
         if (!data) {
-          reject(
-            new Error(
-              "Unable to read the outlet file."
-            )
-          );
+          reject(new Error("Unable to read the outlet file."));
           return;
         }
 
-        const workbook = XLSX.read(data, {
-          type: "array",
-          cellDates: true,
-        });
-
+        const workbook = XLSX.read(data, { type: "array", cellDates: true });
         const sheetName = workbook.SheetNames[0];
-
         if (!sheetName) {
-          reject(
-            new Error(
-              "The selected file does not contain a worksheet."
-            )
-          );
+          reject(new Error("The selected file does not contain a worksheet."));
           return;
         }
 
         const sheet = workbook.Sheets[sheetName];
+        const headerRow = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
+          header: 1,
+          defval: "",
+          blankrows: false,
+        })[0] ?? [];
+        const hasOutletId = headerRow.some((header) =>
+          ["outlet id", "outletid", "outlet_id", "id"].includes(
+            normalizeText(header).toLowerCase()
+          )
+        );
+
+        if (hasOutletId) {
+          reject(new Error("This file contains an Outlet ID. Use Update Existing Outlets instead."));
+          return;
+        }
 
         const rows = XLSX.utils.sheet_to_json<
           Record<string, unknown>
@@ -142,6 +127,12 @@ export function readOutletImportRows(
         const result: OutletImportRow[] = rows.map(
           (row, index) => ({
             rowNumber: index + 2,
+            originalData: Object.fromEntries(
+              Object.entries(row).map(([key, value]) => [
+                key,
+                String(value ?? ""),
+              ])
+            ),
             outletName: normalizeText(
               row["Outlet Name"] ??
                 row["outletName"] ??
@@ -186,7 +177,7 @@ export function readOutletImportRows(
                 row["idNumber"] ??
                 row["id_number"]
             ),
-            status: normalizeStatus(
+            status: normalizeText(
               row["Status"] ??
                 row["status"]
             ),
@@ -215,6 +206,248 @@ export function readOutletImportRows(
 
     reader.readAsArrayBuffer(file);
   });
+}
+
+export function readOutletUpdateRows(
+  file: File
+): Promise<OutletUpdateImportRow[]> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onload = (event) => {
+      try {
+        const data = event.target?.result;
+
+        if (!data) {
+          reject(new Error("Unable to read the outlet file."));
+          return;
+        }
+
+        const workbook = XLSX.read(data, {
+          type: "array",
+          cellDates: true,
+        });
+        const sheetName = workbook.SheetNames[0];
+
+        if (!sheetName) {
+          reject(new Error("The selected file does not contain a worksheet."));
+          return;
+        }
+
+        const values = XLSX.utils.sheet_to_json<unknown[]>(
+          workbook.Sheets[sheetName],
+          { header: 1, defval: "", raw: false, blankrows: true }
+        );
+        const headers = (values[0] ?? []).map((header) =>
+          normalizeText(header).toLowerCase()
+        );
+        const column = (...names: string[]) =>
+          headers.findIndex((header) => names.includes(header));
+        const readCell = (row: unknown[], ...names: string[]) => {
+          const index = column(...names);
+          return index < 0 ? "" : normalizeText(row[index]);
+        };
+
+        const rows = values.slice(1).flatMap((valuesRow, index) => {
+          const row = valuesRow as unknown[];
+          if (!row.some((cell) => normalizeText(cell))) return [];
+
+          return [{
+            rowNumber: index + 2,
+            outletId: readCell(row, "outlet id", "outletid", "outlet_id", "id"),
+            outletName: readCell(row, "outlet name", "outletname", "outlet", "outlet_name"),
+            contactPerson: readCell(row, "contact person", "contactperson", "contact_person"),
+            degicNumber: readCell(row, "degic number", "degicnumber", "degic_number"),
+            contactNumber: readCell(row, "contact number", "contactnumber", "contact_number"),
+            completeAddress: readCell(row, "complete address", "completeaddress", "complete_address"),
+            areaCode: normalizeAreaCode(readCell(row, "area", "area code", "areacode", "area_code")),
+            tin: readCell(row, "tin"),
+            idType: readCell(row, "id type", "idtype", "id_type"),
+            idNumber: readCell(row, "id number", "idnumber", "id_number"),
+            status: readCell(row, "status"),
+          }];
+        });
+
+        resolve(rows);
+      } catch (error) {
+        reject(
+          error instanceof Error
+            ? error
+            : new Error("Failed to process the outlet file.")
+        );
+      }
+    };
+
+    reader.onerror = () => reject(new Error("Failed to read the outlet file."));
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+export function validateOutletUpdateRows(
+  rows: OutletUpdateImportRow[],
+  existingOutlets: Outlet[]
+): OutletUpdateValidationResult[] {
+  const seenKeys = new Set<string>();
+  const seenIds = new Set<string>();
+
+  return rows.map((row) => {
+    const errors: string[] = [];
+    const outletId = row.outletId.trim();
+    const outletName = row.outletName.trim();
+    const contactPerson = row.contactPerson.trim();
+    const degicNumber = row.degicNumber.trim();
+    const contactNumber = row.contactNumber.trim();
+    const completeAddress = row.completeAddress.trim();
+    const areaCode = row.areaCode.trim().toUpperCase();
+    const tin = row.tin.trim();
+    const idType = row.idType.trim();
+    const idNumber = row.idNumber.trim();
+    const statusText = row.status.trim();
+    const statusLower = statusText.toLowerCase();
+    const status = statusLower === "active"
+      ? "Active"
+      : statusLower === "inactive"
+        ? "Inactive"
+        : "";
+    const existingOutlet = existingOutlets.find(
+      (outlet) => outlet.id === outletId
+    );
+
+    if (!outletId || !existingOutlet) {
+      return {
+        ...row,
+        outletId,
+        valid: false,
+        duplicate: false,
+        errors: [outletId ? "Outlet ID not found." : "Outlet ID is required."],
+        rowStatus: "failed",
+        changedFields: [],
+      };
+    }
+
+    if (outletId && seenIds.has(outletId)) {
+      errors.push("Outlet ID appears more than once in the update file.");
+    }
+    if (outletId) seenIds.add(outletId);
+
+    if (!outletName) errors.push("Outlet Name is required.");
+    if (!contactPerson) errors.push("Contact Person is required.");
+    if (!contactNumber) errors.push("Contact Number is required.");
+    if (!completeAddress) errors.push("Complete Address is required.");
+    if (!areaCode) {
+      errors.push("Area is required.");
+    } else if (!VALID_AREAS.has(areaCode as OutletAreaCode)) {
+      errors.push("Area must be one of: IAO, CBR, EFT.");
+    }
+    if (!status) errors.push("Status must be Active or Inactive.");
+
+    const identificationError = validateOutletIdentification({ tin, idType, idNumber });
+    if (identificationError) errors.push(identificationError);
+
+    const duplicateKey = outletName && completeAddress
+      ? `${normalizeOutletKey(outletName)}|${normalizeOutletKey(completeAddress)}`
+      : "";
+    const duplicateExists = duplicateKey !== "" && (
+      existingOutlets.some((outlet) =>
+        outlet.id !== outletId &&
+        normalizeOutletKey(outlet.outletName) === normalizeOutletKey(outletName) &&
+        normalizeOutletKey(outlet.completeAddress) === normalizeOutletKey(completeAddress)
+      ) || seenKeys.has(duplicateKey)
+    );
+
+    if (duplicateExists) {
+      errors.push("Duplicate Outlet Name + Address.");
+    }
+    if (duplicateKey) seenKeys.add(duplicateKey);
+
+    const changedFields: string[] = [];
+    const fieldComparisons: [string, string | undefined, string | undefined][] = [
+      ["Outlet Name", outletName, existingOutlet.outletName],
+      ["Contact Person", contactPerson, existingOutlet.contactPerson],
+      ["Contact Number", contactNumber, existingOutlet.contactNumber],
+      ["Complete Address", completeAddress, existingOutlet.completeAddress],
+      ["Area", areaCode.toUpperCase(), existingOutlet.areaCode?.trim().toUpperCase()],
+      ["TIN", tin, existingOutlet.tin],
+      ["ID Type", idType, existingOutlet.idType],
+      ["ID Number", idNumber, existingOutlet.idNumber],
+      ["DEGIC Number", degicNumber, existingOutlet.degicNumber],
+      ["Status", status.toLowerCase(), existingOutlet.status?.toLowerCase()],
+    ];
+
+    for (const [label, uploadedValue, currentValue] of fieldComparisons) {
+      if (normalizeText(uploadedValue) !== normalizeText(currentValue)) {
+        changedFields.push(label);
+      }
+    }
+
+    return {
+      ...row,
+      outletId,
+      outletName,
+      contactPerson,
+      degicNumber,
+      contactNumber,
+      completeAddress,
+      areaCode,
+      tin,
+      idType,
+      idNumber,
+      status: status || statusText,
+      valid: errors.length === 0,
+      duplicate: duplicateExists,
+      errors,
+      rowStatus: errors.length > 0
+        ? "failed"
+        : changedFields.length > 0
+          ? "changed"
+          : "unchanged",
+      changedFields,
+    };
+  });
+}
+
+export function exportMissingDegicOutlets(outlets: Outlet[]) {
+  const rows = outlets.map((outlet) => ({
+    "Outlet ID": outlet.id,
+    "Outlet Name": outlet.outletName,
+    "Contact Person": outlet.contactPerson,
+    "Contact Number": outlet.contactNumber,
+    "Complete Address": outlet.completeAddress,
+    Area: outlet.areaCode,
+    TIN: outlet.tin || "",
+    "ID Type": outlet.idType || "",
+    "ID Number": outlet.idNumber || "",
+    "DEGIC Number": "",
+    Status: outlet.status,
+  }));
+  const workbook = XLSX.utils.book_new();
+  const worksheet = createOutletWorksheet(rows);
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Missing DEGIC");
+  XLSX.writeFile(workbook, `outlets-missing-degic-${new Date().toISOString().slice(0, 10)}.xlsx`);
+}
+
+export function downloadFailedOutletUpdates(
+  rows: OutletUpdateValidationResult[]
+) {
+  const failedRows = rows.filter((row) => row.rowStatus === "failed");
+  const workbookRows = failedRows.map((row) => ({
+    "Excel Row": row.rowNumber,
+    "Outlet ID": row.outletId,
+    "Outlet Name": row.outletName,
+    "Contact Person": row.contactPerson,
+    "Contact Number": row.contactNumber,
+    "Complete Address": row.completeAddress,
+    Area: row.areaCode,
+    TIN: row.tin,
+    "ID Type": row.idType,
+    "ID Number": row.idNumber,
+    "DEGIC Number": row.degicNumber,
+    Status: row.status,
+    "Error / Reason": row.errors.join("; "),
+  }));
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(workbookRows), "Failed Updates");
+  XLSX.writeFile(workbook, `outlet-update-failures-${new Date().toISOString().slice(0, 10)}.xlsx`);
 }
 
 export function validateOutletImportRows(
@@ -339,6 +572,7 @@ export function validateOutletImportRows(
 
     return {
       rowNumber: row.rowNumber,
+      originalData: row.originalData,
       outletName,
       contactPerson,
       degicNumber,
@@ -354,12 +588,52 @@ export function validateOutletImportRows(
       errors,
     };
   });
+
+}
+
+export function exportFailedOutletImportsWorkbook(
+  rows: OutletImportValidationResult[]
+): XLSX.WorkBook {
+  const failedRows = rows.filter((row) => !row.valid);
+  const workbookRows = failedRows.map((row) => ({
+    "Excel Row": row.rowNumber,
+    ...(row.originalData ?? {
+      "Outlet Name": row.outletName,
+      "Contact Person": row.contactPerson,
+      "DEGIC Number": row.degicNumber,
+      "Contact Number": row.contactNumber,
+      "Complete Address": row.completeAddress,
+      "Area Code": row.areaCode,
+      TIN: row.tin,
+      "ID Type": row.idType,
+      "ID Number": row.idNumber,
+      Status: row.status,
+    }),
+    "Error / Reason": row.errors.join("; "),
+  }));
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(
+    workbook,
+    XLSX.utils.json_to_sheet(workbookRows),
+    "Failed Imports"
+  );
+  return workbook;
+}
+
+export function downloadFailedOutletImports(
+  rows: OutletImportValidationResult[]
+) {
+  XLSX.writeFile(
+    exportFailedOutletImportsWorkbook(rows),
+    `outlet-import-failures-${new Date().toISOString().slice(0, 10)}.xlsx`
+  );
 }
 
 export function exportOutletsWorkbook(
   outlets: Outlet[]
 ): XLSX.WorkBook {
   const rows = outlets.map((outlet) => ({
+    "Outlet ID": outlet.id,
     "Outlet Name": outlet.outletName,
     "Contact Person": outlet.contactPerson,
     "DEGIC Number": outlet.degicNumber || "",
@@ -378,59 +652,88 @@ export function exportOutletsWorkbook(
         })
       : "N/A",
   }));
-
-  const sheet = XLSX.utils.json_to_sheet(rows);
   const workbook = XLSX.utils.book_new();
-
   XLSX.utils.book_append_sheet(
     workbook,
-    sheet,
+    createOutletWorksheet(rows),
     "Outlets"
   );
-
   return workbook;
 }
 
-export function exportOutletsExcel(
-  outlets: Outlet[]
-) {
-  const workbook = exportOutletsWorkbook(outlets);
+export async function importValidatedOutletRows(
+  rows: OutletImportValidationResult[],
+  addOutlet: (
+    outlet: Omit<Outlet, "id" | "createdAt" | "updatedAt">
+  ) => Promise<{ success: boolean; message?: string }>
+): Promise<{
+  importedCount: number;
+  failedRows: OutletImportValidationResult[];
+}> {
+  let importedCount = 0;
+  const failedRows = rows
+    .filter((row) => !row.valid)
+    .map((row) => ({ ...row, errors: [...row.errors] }));
+  for (const row of rows.filter((item) => item.valid)) {
+    try {
+      const result = await addOutlet({
+        outletName: row.outletName,
+        contactPerson: row.contactPerson,
+        degicNumber: row.degicNumber,
+        contactNumber: row.contactNumber,
+        completeAddress: row.completeAddress,
+        areaCode: row.areaCode,
+        tin: row.tin,
+        idType: row.idType,
+        idNumber: row.idNumber,
+        status: parseOutletStatus(row.status),
+      });
+      if (result.success) {
+        importedCount += 1;
+      } else {
+        failedRows.push({
+          ...row,
+          valid: false,
+          errors: [...row.errors, result.message || "Failed to import."],
+        });
+      }
+    } catch (error) {
+      failedRows.push({
+        ...row,
+        valid: false,
+        errors: [
+          ...row.errors,
+          error instanceof Error ? error.message : "Failed to import.",
+        ],
+      });
+    }
+  }
+  return { importedCount, failedRows };
+}
 
+export function exportOutletsExcel(outlets: Outlet[]) {
   XLSX.writeFile(
-    workbook,
-    `outlets-${new Date()
-      .toISOString()
-      .slice(0, 10)}.xlsx`
+    exportOutletsWorkbook(outlets),
+    `outlets-${new Date().toISOString().slice(0, 10)}.xlsx`
   );
 }
 
 export function downloadOutletTemplate() {
   const workbook = XLSX.utils.book_new();
-  const sheet = XLSX.utils.json_to_sheet([
-    {
-      "Outlet Name": "Sample Outlet",
-      "Contact Person": "Juan Dela Cruz",
-      "DEGIC Number": "DEGIC-0001",
-      "Contact Number": "09171234567",
-      "Complete Address": "123 Main St, Cebu City",
-      "Area Code": "IAO",
-      TIN: "123-456-789",
-      "ID Type": "Driver's License",
-      "ID Number": "N01-123456",
-      Status: "Active",
-    },
-  ]);
-
-  XLSX.utils.book_append_sheet(
-    workbook,
-    sheet,
-    "Template"
-  );
-
-  XLSX.writeFile(
-    workbook,
-    "outlet-import-template.xlsx"
-  );
+  const sheet = XLSX.utils.json_to_sheet([{
+    "Outlet Name": "Sample Outlet",
+    "Contact Person": "Juan Dela Cruz",
+    "DEGIC Number": "DEGIC-0001",
+    "Contact Number": "09171234567",
+    "Complete Address": "123 Main St, Cebu City",
+    "Area Code": "IAO",
+    TIN: "123-456-789",
+    "ID Type": "Driver's License",
+    "ID Number": "N01-123456",
+    Status: "Active",
+  }]);
+  XLSX.utils.book_append_sheet(workbook, sheet, "Template");
+  XLSX.writeFile(workbook, "outlet-import-template.xlsx");
 }
 
 export function exportOutletReportWorkbook(

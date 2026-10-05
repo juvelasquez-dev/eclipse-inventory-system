@@ -8,6 +8,7 @@ import {
   MapPin,
   ListFilter,
   Upload,
+  RefreshCw,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
@@ -30,15 +31,21 @@ import { useToast } from "../../context/ToastContext";
 
 import type {
   Outlet,
+  OutletStatus,
 } from "../../types/inventory";
 
 import {
   downloadOutletTemplate,
+  downloadFailedOutletImports,
+  downloadFailedOutletUpdates,
   exportOutletsExcel,
-  parseOutletStatus,
+  importValidatedOutletRows,
   readOutletImportRows,
+  readOutletUpdateRows,
   validateOutletImportRows,
+  validateOutletUpdateRows,
   type OutletImportValidationResult,
+  type OutletUpdateValidationResult,
 } from "../../utils/outlets";
 
 export default function Outlets() {
@@ -52,6 +59,7 @@ export default function Outlets() {
   } = useInventoryContext();
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const updateFileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [search, setSearch] =
     useState("");
@@ -88,6 +96,30 @@ export default function Outlets() {
 
   const [importLoading, setImportLoading] =
     useState(false);
+
+  const [importComplete, setImportComplete] =
+    useState(false);
+
+  const [importedCount, setImportedCount] =
+    useState(0);
+
+  const [updateRows, setUpdateRows] =
+    useState<OutletUpdateValidationResult[]>([]);
+
+  const [isUpdateModalOpen, setIsUpdateModalOpen] =
+    useState(false);
+
+  const [updateLoading, setUpdateLoading] =
+    useState(false);
+
+  const [updateComplete, setUpdateComplete] =
+    useState(false);
+
+  const [updatedCount, setUpdatedCount] =
+    useState(0);
+
+  const [unchangedCount, setUnchangedCount] =
+    useState(0);
 
   const filteredOutlets = useMemo(() => {
     const searchTerm =
@@ -267,6 +299,16 @@ export default function Outlets() {
   function closeImportModal() {
     setIsImportModalOpen(false);
     setImportRows([]);
+    setImportComplete(false);
+    setImportedCount(0);
+  }
+
+  function closeUpdateModal() {
+    setIsUpdateModalOpen(false);
+    setUpdateRows([]);
+    setUpdateComplete(false);
+    setUpdatedCount(0);
+    setUnchangedCount(0);
   }
 
   async function handleImportFileChange(
@@ -288,6 +330,8 @@ export default function Outlets() {
       );
 
       setImportRows(validatedRows);
+      setImportComplete(false);
+      setImportedCount(0);
       setIsImportModalOpen(true);
     } catch (error) {
       const message =
@@ -302,78 +346,105 @@ export default function Outlets() {
     }
   }
 
-  async function confirmImport() {
-    const validRows = importRows.filter(
-      (row) => row.valid
-    );
+  async function handleUpdateFileChange(
+    event: React.ChangeEvent<HTMLInputElement>
+  ) {
+    const file = event.target.files?.[0];
+    if (!file) return;
 
-    if (validRows.length === 0) {
+    setUpdateLoading(true);
+
+    try {
+      const rows = await readOutletUpdateRows(file);
+      setUpdateRows(validateOutletUpdateRows(rows, outlets));
+      setUpdateComplete(false);
+      setUpdatedCount(0);
+      setUnchangedCount(0);
+      setIsUpdateModalOpen(true);
+    } catch (error) {
       showToast(
-        "No valid outlet rows were found to import.",
+        error instanceof Error
+          ? error.message
+          : "Unable to read the outlet update file.",
         "error"
       );
-      return;
+    } finally {
+      setUpdateLoading(false);
+      event.target.value = "";
     }
+  }
 
-    let importedCount = 0;
-    const errors: string[] = [];
+  async function confirmUpdateImport() {
+    setUpdateLoading(true);
+    let successfulUpdates = 0;
+    const results = updateRows.map((row) => ({
+      ...row,
+      errors: [...row.errors],
+    }));
 
-    for (const row of validRows) {
-      const result = await addOutlet({
-        outletName: row.outletName,
-        contactPerson: row.contactPerson,
-        degicNumber: row.degicNumber,
-        contactNumber: row.contactNumber,
-        completeAddress: row.completeAddress,
-        areaCode: row.areaCode,
-        tin: row.tin,
-        idType: row.idType,
-        idNumber: row.idNumber,
-        status: parseOutletStatus(row.status),
-      });
+    for (const row of results) {
+      if (row.rowStatus !== "changed") continue;
 
-      if (result.success) {
-        importedCount += 1;
-      } else {
-        errors.push(
-          `${row.outletName || "Row " + row.rowNumber}: ${result.message || "Failed to import."}`
+      const existingOutlet = outlets.find(
+        (outlet) => outlet.id === row.outletId
+      );
+
+      if (!existingOutlet) {
+        row.valid = false;
+        row.rowStatus = "failed";
+        row.errors.push("Outlet ID not found.");
+        continue;
+      }
+
+      try {
+        const result = await updateOutlet({
+          ...existingOutlet,
+          id: existingOutlet.id,
+          outletName: row.outletName,
+          contactPerson: row.contactPerson,
+          degicNumber: row.degicNumber,
+          contactNumber: row.contactNumber,
+          completeAddress: row.completeAddress,
+          areaCode: row.areaCode,
+          tin: row.tin,
+          idType: row.idType,
+          idNumber: row.idNumber,
+          status: row.status as OutletStatus,
+        });
+
+        if (result.success) {
+          successfulUpdates += 1;
+          row.rowStatus = "updated";
+        } else {
+          row.valid = false;
+          row.rowStatus = "failed";
+          row.errors.push(result.message || "Failed to update outlet.");
+        }
+      } catch (error) {
+        row.valid = false;
+        row.rowStatus = "failed";
+        row.errors.push(
+          error instanceof Error ? error.message : "Failed to update outlet."
         );
       }
     }
 
-    if (importedCount > 0) {
-      showToast(
-        `${importedCount} outlet${importedCount === 1 ? "" : "s"} imported successfully.`
-      );
-    }
-
-    if (errors.length > 0) {
-      showToast(errors.join(" | "), "error");
-    }
-
-    if (importedCount === validRows.length) {
-      closeImportModal();
-      return;
-    }
-
-    const remainingRows = validRows.filter(
-      (row) =>
-        !errors.some((error) =>
-          error.startsWith(
-            `${row.outletName || "Row " + row.rowNumber}:`
-          )
-        )
+    setUpdateRows(results);
+    setUpdatedCount(successfulUpdates);
+    setUnchangedCount(
+      results.filter((row) => row.rowStatus === "unchanged").length
     );
+    setUpdateComplete(true);
+    setUpdateLoading(false);
+  }
 
-    setImportRows((current) =>
-      current.filter(
-        (row) =>
-          !remainingRows.some(
-            (remaining) =>
-              remaining.rowNumber === row.rowNumber
-          )
-      )
-    );
+  async function confirmImport() {
+    setImportLoading(true);
+    const result = await importValidatedOutletRows(importRows, addOutlet);
+    setImportRows(result.failedRows);
+    setImportedCount(result.importedCount);
+    setImportComplete(true);
+    setImportLoading(false);
   }
 
   return (
@@ -429,7 +500,17 @@ export default function Outlets() {
                 className="gap-2"
               >
                 <Upload size={16} />
-                {importLoading ? "Reading..." : "Import"}
+                {importLoading ? "Reading..." : "Import Outlets"}
+              </Button>
+
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => updateFileInputRef.current?.click()}
+                className="gap-2"
+              >
+                <RefreshCw size={16} />
+                {updateLoading ? "Processing..." : "Update Existing Outlets"}
               </Button>
 
               <input
@@ -438,6 +519,14 @@ export default function Outlets() {
                 accept=".csv,.xlsx,.xls"
                 className="hidden"
                 onChange={handleImportFileChange}
+              />
+
+              <input
+                ref={updateFileInputRef}
+                type="file"
+                accept=".csv,.xlsx,.xls"
+                className="hidden"
+                onChange={handleUpdateFileChange}
               />
 
               <Button
@@ -708,35 +797,81 @@ export default function Outlets() {
       <Modal
         open={isImportModalOpen}
         onClose={closeImportModal}
-        title="Import Outlets"
+        title={importComplete ? "Import Complete" : "Import Outlets"}
       >
         <div className="space-y-5">
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-            <div className="flex flex-wrap gap-4 text-sm">
-              <div>
-                <span className="font-semibold text-slate-900">
-                  {importRows.length}
-                </span>{" "}
-                rows
+            {importComplete ? (
+              <div className="space-y-1 text-sm">
+                <p className="font-semibold text-emerald-700">
+                  {importedCount} outlet{importedCount === 1 ? "" : "s"} imported successfully
+                </p>
+                <p className="font-semibold text-red-600">
+                  {importRows.length} outlet{importRows.length === 1 ? "" : "s"} failed
+                </p>
+                {importRows.length === 0 && (
+                  <p className="pt-2 text-slate-600">All rows were imported successfully.</p>
+                )}
               </div>
+            ) : (
+              <div className="flex flex-wrap gap-4 text-sm">
+                <div>
+                  <span className="font-semibold text-slate-900">
+                    {importRows.length}
+                  </span>{" "}
+                  rows
+                </div>
 
-              <div className="text-emerald-600">
-                <span className="font-semibold">
-                  {importRows.filter((row) => row.valid).length}
-                </span>{" "}
-                valid
-              </div>
+                <div className="text-emerald-600">
+                  <span className="font-semibold">
+                    {importRows.filter((row) => row.valid).length}
+                  </span>{" "}
+                  valid
+                </div>
 
-              <div className="text-red-600">
-                <span className="font-semibold">
-                  {importRows.filter((row) => !row.valid).length}
-                </span>{" "}
-                errors
+                <div className="text-red-600">
+                  <span className="font-semibold">
+                    {importRows.filter((row) => !row.valid).length}
+                  </span>{" "}
+                  errors
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
-          {importRows.length > 0 ? (
+          {importComplete ? (
+            importRows.length > 0 ? (
+              <section className="space-y-3">
+                <h3 className="text-sm font-semibold text-slate-900">Failed Outlets</h3>
+                <div className="max-h-80 overflow-auto rounded-xl border border-slate-200">
+                  <table className="w-full min-w-[34rem] text-left text-sm">
+                    <thead className="sticky top-0 bg-slate-50 text-slate-600">
+                      <tr>
+                        <th className="px-3 py-2 font-semibold">Excel Row</th>
+                        <th className="px-3 py-2 font-semibold">Outlet Name</th>
+                        <th className="px-3 py-2 font-semibold">Area</th>
+                        <th className="px-3 py-2 font-semibold">Reason</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {importRows.map((row) => (
+                        <tr key={row.rowNumber}>
+                          <td className="px-3 py-2 text-slate-500">{row.rowNumber}</td>
+                          <td className="px-3 py-2 font-medium text-slate-900">
+                            {row.outletName || row.originalData?.["Outlet Name"] || "—"}
+                          </td>
+                          <td className="px-3 py-2 text-slate-700">
+                            {row.areaCode || row.originalData?.Area || row.originalData?.["Area Code"] || "—"}
+                          </td>
+                          <td className="px-3 py-2 text-red-600">{row.errors.join("; ")}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            ) : null
+          ) : importRows.length > 0 ? (
             <div className="max-h-80 overflow-auto rounded-xl border border-slate-200">
               <table className="w-full text-left text-sm">
                 <thead className="sticky top-0 bg-slate-50 text-slate-600">
@@ -792,25 +927,167 @@ export default function Outlets() {
             </div>
           )}
 
-          <div className="flex justify-end gap-3 border-t border-slate-100 pt-4">
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={closeImportModal}
-            >
-              Cancel
-            </Button>
+          <div className="flex flex-wrap justify-end gap-3 border-t border-slate-100 pt-4">
+            {importComplete ? (
+              <>
+                {importRows.length > 0 && (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => downloadFailedOutletImports(importRows)}
+                    className="gap-2"
+                  >
+                    <Download size={16} /> Download Invalid Rows
+                  </Button>
+                )}
+                <Button type="button" onClick={closeImportModal}>Close</Button>
+              </>
+            ) : (
+              <>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={closeImportModal}
+                >
+                  Cancel
+                </Button>
 
-            <Button
-              type="button"
-              onClick={confirmImport}
-              disabled={
-                importRows.filter((row) => row.valid)
-                  .length === 0
-              }
-            >
-              Import Valid Rows
-            </Button>
+                <Button
+                  type="button"
+                  onClick={confirmImport}
+                  disabled={importLoading || importRows.length === 0}
+                >
+                  {importLoading ? "Importing..." : "Import Valid Rows"}
+                </Button>
+              </>
+            )}
+          </div>
+        </div>
+      </Modal>
+
+      {/* Update Existing Outlets */}
+      <Modal
+        open={isUpdateModalOpen}
+        onClose={closeUpdateModal}
+        title={updateComplete ? "Update Complete" : "Update Existing Outlets"}
+      >
+        <div className="space-y-5">
+          {updateComplete ? (
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm">
+              <p className="font-semibold text-emerald-700">
+                {updatedCount} outlet{updatedCount === 1 ? "" : "s"} updated
+              </p>
+              <p className="mt-1 text-slate-600">
+                {unchangedCount} outlet{unchangedCount === 1 ? "" : "s"} unchanged
+              </p>
+              <p className="mt-1 text-red-600">
+                {updateRows.filter((row) => row.rowStatus === "failed").length} failed
+              </p>
+            </div>
+          ) : (
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+              <div className="flex flex-wrap gap-4 text-sm">
+                <span>{updateRows.length} rows</span>
+                <span className="text-amber-700">
+                  {updateRows.filter((row) => row.rowStatus === "changed").length} changed
+                </span>
+                <span className="text-slate-600">
+                  {updateRows.filter((row) => row.rowStatus === "unchanged").length} unchanged
+                </span>
+                <span className="text-red-600">
+                  {updateRows.filter((row) => row.rowStatus === "failed").length} failed
+                </span>
+              </div>
+            </div>
+          )}
+
+          {!updateComplete && (
+            <p className="text-sm text-slate-600">
+              Only rows with an existing Outlet ID will be updated. This workflow never creates outlets.
+            </p>
+          )}
+
+          <div className="max-h-96 overflow-auto rounded-lg border border-slate-200">
+            <table className="w-full min-w-[38rem] text-left text-sm">
+              <thead className="sticky top-0 bg-slate-50 text-slate-600">
+                <tr>
+                  <th className="px-3 py-2 font-semibold">Row</th>
+                  <th className="px-3 py-2 font-semibold">Outlet</th>
+                  <th className="px-3 py-2 font-semibold">Status</th>
+                  <th className="px-3 py-2 font-semibold">Details</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {updateRows.map((row) => (
+                    <tr key={`${row.rowNumber}-${row.outletId}`}>
+                      <td className="px-3 py-2 text-slate-500">{row.rowNumber}</td>
+                      <td className="px-3 py-2">{row.outletName || "—"}</td>
+                      <td className="px-3 py-2">
+                        <span className={`inline-flex rounded-md px-2 py-1 text-xs font-medium ${
+                          row.rowStatus === "failed"
+                            ? "bg-red-50 text-red-700"
+                            : row.rowStatus === "changed"
+                              ? "bg-amber-50 text-amber-700"
+                              : row.rowStatus === "updated"
+                                ? "bg-emerald-50 text-emerald-700"
+                                : "bg-slate-100 text-slate-600"
+                        }`}>
+                          {row.rowStatus === "updated"
+                            ? "Updated"
+                            : row.rowStatus.charAt(0).toUpperCase() + row.rowStatus.slice(1)}
+                        </span>
+                      </td>
+                      <td className={`px-3 py-2 ${row.rowStatus === "failed" ? "text-red-600" : "text-slate-600"}`}>
+                        {row.rowStatus === "failed"
+                          ? row.errors.join(" ")
+                          : row.rowStatus === "unchanged"
+                            ? "No changes"
+                            : row.changedFields.join(", ")}
+                      </td>
+                    </tr>
+                  ))}
+                {!updateComplete && updateRows.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="px-3 py-8 text-center text-sm text-slate-500">
+                      No data rows found in the selected file.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-4">
+            {updateComplete && updateRows.some((row) => row.rowStatus === "failed") && (
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => downloadFailedOutletUpdates(updateRows)}
+                className="gap-2"
+              >
+                <Download size={16} /> Download Invalid Rows
+              </Button>
+            )}
+            {!updateComplete ? (
+              <>
+                <Button type="button" variant="secondary" onClick={closeUpdateModal}>
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  onClick={confirmUpdateImport}
+                  disabled={updateLoading || !updateRows.some((row) => row.rowStatus === "changed")}
+                >
+                  {updateLoading
+                    ? "Updating..."
+                    : updateRows.some((row) => row.rowStatus === "changed")
+                      ? `Update ${updateRows.filter((row) => row.rowStatus === "changed").length} Outlet${updateRows.filter((row) => row.rowStatus === "changed").length === 1 ? "" : "s"}`
+                      : "No Changes to Update"}
+                </Button>
+              </>
+            ) : (
+              <Button type="button" onClick={closeUpdateModal}>Close</Button>
+            )}
           </div>
         </div>
       </Modal>
