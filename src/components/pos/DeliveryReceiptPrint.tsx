@@ -45,7 +45,7 @@ export default function DeliveryReceiptPrint({
         <p className="dr-company">Eclipse Food Trading OPC</p>
         <p className="dr-address">Caballero Compound Lower Balulang</p>
         <p className="dr-address">Cagayan De Oro City</p>
-        <p className="dr-phone">09100000000</p>
+        <p className="dr-phone">09166412319</p>
       </div>
 
       <div className="dr-divider" />
