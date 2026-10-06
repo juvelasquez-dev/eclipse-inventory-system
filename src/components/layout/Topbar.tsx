@@ -15,11 +15,13 @@ type TopbarModule =
 
 interface TopbarProps {
   module: TopbarModule;
+  navigationOpen: boolean;
   onMenuClick: () => void;
 }
 
 export default function Topbar({
   module,
+  navigationOpen,
   onMenuClick,
 }: TopbarProps) {
   const navigate = useNavigate();
@@ -107,7 +109,9 @@ export default function Topbar({
           type="button"
           onClick={onMenuClick}
           aria-label="Open navigation"
-          className="rounded-lg p-2 text-slate-600 transition hover:bg-slate-100 md:hidden"
+          aria-controls="app-navigation"
+          aria-expanded={navigationOpen}
+          className="rounded-lg p-2 text-slate-600 transition hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 xl:hidden"
         >
           <Menu size={22} />
         </button>

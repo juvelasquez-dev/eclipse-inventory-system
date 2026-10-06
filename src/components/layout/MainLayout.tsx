@@ -45,6 +45,7 @@ export default function MainLayout({
       <div className="relative min-w-0 flex-1">
         <Topbar
           module={module}
+          navigationOpen={sidebarOpen}
           onMenuClick={() =>
             setSidebarOpen(true)
           }

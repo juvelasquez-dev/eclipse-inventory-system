@@ -11,6 +11,7 @@ import {
   FileText,
   X,
 } from "lucide-react";
+import { useEffect } from "react";
 
 import { NavLink } from "react-router-dom";
 
@@ -126,6 +127,21 @@ export default function Sidebar({
       ? "Outlet Management"
       : "Inventory Management";
 
+  useEffect(() => {
+      if (!open) {
+        return;
+      }
+
+      function handleEscape(event: KeyboardEvent) {
+        if (event.key === "Escape") {
+          onClose();
+        }
+      }
+
+      window.addEventListener("keydown", handleEscape);
+      return () => window.removeEventListener("keydown", handleEscape);
+  }, [open, onClose]);
+
   const accentColor = isPOS
     ? "emerald"
     : isOutlets
@@ -158,18 +174,20 @@ export default function Sidebar({
           type="button"
           aria-label="Close navigation"
           onClick={onClose}
-          className="fixed inset-0 z-40 bg-slate-950/50 md:hidden"
+          className="fixed inset-0 z-40 bg-slate-950/50 xl:hidden"
         />
       )}
 
       <aside
+        id="app-navigation"
+        aria-label={`${systemName} navigation`}
         className={`
           fixed inset-y-0 left-0 z-50
           flex w-64 flex-col
           border-r border-slate-200/70
           bg-white/80 backdrop-blur-sm
           transition-transform duration-200
-          md:static md:z-auto md:translate-x-0
+          xl:static xl:z-auto xl:translate-x-0
           ${
             open
               ? "translate-x-0"
@@ -210,7 +228,7 @@ export default function Sidebar({
             type="button"
             onClick={onClose}
             aria-label="Close navigation"
-            className="rounded-lg p-2 text-slate-600 transition hover:bg-slate-100 md:hidden"
+            className="rounded-lg p-2 text-slate-600 transition hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 xl:hidden"
           >
             <X size={20} />
           </button>
