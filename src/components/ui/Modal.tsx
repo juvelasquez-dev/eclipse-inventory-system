@@ -6,6 +6,7 @@ interface ModalProps {
   title: string;
   onClose: () => void;
   children: ReactNode;
+  wide?: boolean;
 }
 
 export default function Modal({
@@ -13,8 +14,16 @@ export default function Modal({
   title,
   onClose,
   children,
+  wide = false,
 }: ModalProps) {
   if (!open) return null;
+
+  const panelClass = wide
+    ? "my-4 flex max-h-[calc(100vh-4rem)] w-[92vw] max-w-7xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl shadow-slate-900/20 ring-1 ring-slate-900/5"
+    : "my-4 w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl shadow-slate-900/20 ring-1 ring-slate-900/5 sm:my-8";
+  const bodyClass = wide
+    ? "flex min-h-0 flex-1 flex-col overflow-hidden px-4 py-4 sm:px-6 sm:py-5"
+    : "max-h-[calc(100vh-8rem)] overflow-y-auto px-4 py-4 sm:px-6 sm:py-5";
 
   return (
     <div
@@ -22,7 +31,7 @@ export default function Modal({
       onClick={onClose}
     >
       <div
-        className="my-4 w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl shadow-slate-900/20 ring-1 ring-slate-900/5 sm:my-8"
+        className={panelClass}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-slate-100 px-4 py-4 sm:px-6 sm:py-5">
@@ -40,7 +49,7 @@ export default function Modal({
           </button>
         </div>
 
-        <div className="max-h-[calc(100vh-8rem)] overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">
+        <div className={bodyClass}>
           {children}
         </div>
       </div>

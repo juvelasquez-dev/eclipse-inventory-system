@@ -15,6 +15,7 @@ import { useNavigate } from "react-router-dom";
 
 import Button from "../../components/ui/Button";
 import Modal from "../../components/ui/Modal";
+import Select from "../../components/ui/Select";
 import { useInventoryContext } from "../../context/InventoryContext";
 import type { Outlet } from "../../types/inventory";
 import {
@@ -24,6 +25,13 @@ import {
 
 const AREA_CODES = ["IAO", "CBR", "EFT"] as const;
 const RECENT_DAYS = 30;
+const ALL_AREAS = "ALL";
+const MISSING_DEGIC_AREA_OPTIONS = [
+  { label: "All Areas", value: ALL_AREAS },
+  { label: "EFT", value: "EFT" },
+  { label: "IAO", value: "IAO" },
+  { label: "CBR", value: "CBR" },
+];
 
 type DetailView =
   | { type: "issue"; label: string }
@@ -87,6 +95,7 @@ export default function OutletDashboard() {
   const navigate = useNavigate();
   const { outlets } = useInventoryContext();
   const [selectedDetail, setSelectedDetail] = useState<DetailView | null>(null);
+  const [missingDegicAreaFilter, setMissingDegicAreaFilter] = useState(ALL_AREAS);
 
   const summary = useMemo(() => {
     const activeCount = outlets.filter(
@@ -173,6 +182,25 @@ export default function OutletDashboard() {
     if (selectedDetail.type === "attention") return needsAttention;
     return issueGroups.find((group) => group.label === selectedDetail.label)?.outlets ?? [];
   }, [selectedDetail, inactiveOutlets, recentlyUpdated, needsAttention, issueGroups]);
+
+  const isMissingDegicView =
+    selectedDetail?.type === "issue" &&
+    selectedDetail.label === "Missing DEGIC Number";
+
+  const filteredRows = useMemo(
+    () =>
+      isMissingDegicView && missingDegicAreaFilter !== ALL_AREAS
+        ? detailOutlets.filter(
+            (outlet) => outlet.areaCode === missingDegicAreaFilter
+          )
+        : detailOutlets,
+    [detailOutlets, isMissingDegicView, missingDegicAreaFilter]
+  );
+
+  function openDetail(detail: DetailView) {
+    setMissingDegicAreaFilter(ALL_AREAS);
+    setSelectedDetail(detail);
+  }
 
   const detailTitle = !selectedDetail
     ? ""
@@ -324,7 +352,7 @@ export default function OutletDashboard() {
                     <p className="text-xs text-slate-500">Review incomplete outlet records before they cause follow-up work.</p>
                   </div>
                 </div>
-                <button type="button" onClick={() => setSelectedDetail({ type: "attention" })} className="inline-flex items-center gap-1 text-sm font-semibold text-rose-700 hover:text-rose-800">
+                <button type="button" onClick={() => openDetail({ type: "attention" })} className="inline-flex items-center gap-1 text-sm font-semibold text-rose-700 hover:text-rose-800">
                   View All <ArrowRight size={15} />
                 </button>
               </div>
@@ -334,7 +362,7 @@ export default function OutletDashboard() {
               ) : (
                 <div className="grid grid-cols-1 gap-4 p-5 lg:grid-cols-2">
                   {issueGroups.map((group) => (
-                    <button key={group.label} type="button" onClick={() => setSelectedDetail({ type: "issue", label: group.label })} className="rounded-xl border border-slate-200 p-4 text-left transition hover:border-emerald-300 hover:bg-emerald-50/30">
+                    <button key={group.label} type="button" onClick={() => openDetail({ type: "issue", label: group.label })} className="rounded-xl border border-slate-200 p-4 text-left transition hover:border-emerald-300 hover:bg-emerald-50/30">
                       <div className="flex items-center justify-between gap-3">
                         <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${issueTone(group.label)}`}>{group.label}</span>
                         <span className="flex items-center gap-1 text-sm font-semibold text-slate-500">{group.outlets.length} <ArrowRight size={14} /></span>
@@ -395,7 +423,7 @@ export default function OutletDashboard() {
                   <h2 className="font-semibold text-slate-900">Inactive Outlets</h2>
                   <p className="mt-1 text-xs text-slate-500">Based on the current status field.</p>
                 </div>
-                <button type="button" onClick={() => setSelectedDetail({ type: "inactive" })} className="text-sm font-semibold text-emerald-700 hover:text-emerald-800">View All</button>
+                <button type="button" onClick={() => openDetail({ type: "inactive" })} className="text-sm font-semibold text-emerald-700 hover:text-emerald-800">View All</button>
               </div>
               <div className="divide-y divide-slate-100">
                 {inactiveOutlets.length === 0 ? <p className="px-5 py-8 text-center text-sm text-slate-500">No inactive outlets.</p> : inactiveOutlets.slice(0, 5).map((outlet) => (
@@ -410,7 +438,7 @@ export default function OutletDashboard() {
             <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
               <div className="flex flex-col gap-2 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
                 <div><h2 className="font-semibold text-slate-900">Recently Updated</h2><p className="mt-1 text-xs text-slate-500">Outlets updated within the last {RECENT_DAYS} days.</p></div>
-                <button type="button" onClick={() => setSelectedDetail({ type: "recent" })} className="inline-flex items-center gap-1 text-sm font-semibold text-emerald-700 hover:text-emerald-800">View All <ArrowRight size={15} /></button>
+                <button type="button" onClick={() => openDetail({ type: "recent" })} className="inline-flex items-center gap-1 text-sm font-semibold text-emerald-700 hover:text-emerald-800">View All <ArrowRight size={15} /></button>
               </div>
               <div className="grid grid-cols-1 divide-y divide-slate-100 md:grid-cols-2 md:divide-x md:divide-y-0">
                 {recentlyUpdated.length === 0 ? <div className="px-5 py-8 text-center text-sm text-slate-500 md:col-span-2">No outlets have been updated recently.</div> : recentlyUpdated.slice(0, 6).map((outlet) => (
@@ -423,28 +451,141 @@ export default function OutletDashboard() {
         )}
       </div>
 
-      <Modal open={selectedDetail !== null} onClose={() => setSelectedDetail(null)} title={detailTitle}>
-        <div className="space-y-5">
+      <Modal
+        open={selectedDetail !== null}
+        onClose={() => setSelectedDetail(null)}
+        title={detailTitle}
+        wide={isMissingDegicView}
+      >
+        <div
+          className={
+            isMissingDegicView
+              ? "flex min-h-0 flex-1 flex-col gap-4"
+              : "space-y-5"
+          }
+        >
           <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
             <p className="text-sm text-slate-500">{detailDescription}</p>
-            <p className="text-sm font-semibold text-slate-800">{detailOutlets.length} {detailOutlets.length === 1 ? "outlet" : "outlets"}</p>
+            <p className="text-sm font-semibold text-slate-800">
+              {filteredRows.length} {filteredRows.length === 1 ? "outlet" : "outlets"}
+            </p>
           </div>
-          {detailOutlets.length === 0 ? <div className="rounded-xl border border-dashed border-slate-300 px-4 py-10 text-center text-sm text-slate-500">No outlets match this review list.</div> : (
-            <div className="max-h-[min(60vh,28rem)] overflow-auto rounded-xl border border-slate-200">
-              <table className="w-full min-w-[38rem] text-left text-sm">
-                <thead className="sticky top-0 bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-3 font-semibold">Outlet Name</th><th className="px-4 py-3 font-semibold">Area</th><th className="px-4 py-3 font-semibold">Contact Person</th>{selectedDetail?.type !== "recent" && <th className="px-4 py-3 font-semibold">Contact Number</th>}<th className="px-4 py-3 font-semibold">Status</th>{selectedDetail?.type === "inactive" && <th className="px-4 py-3 font-semibold">Last Updated</th>}{selectedDetail?.type === "recent" && <th className="px-4 py-3 font-semibold">Updated Date</th>}</tr></thead>
-                <tbody className="divide-y divide-slate-100">{detailOutlets.map((outlet) => <tr key={outlet.id} className="hover:bg-slate-50"><td className="px-4 py-3 font-medium text-slate-800">{outlet.outletName}</td><td className="px-4 py-3 text-slate-600">{outlet.areaCode || "-"}</td><td className="px-4 py-3 text-slate-600">{outlet.contactPerson || "-"}</td>{selectedDetail?.type !== "recent" && <td className="px-4 py-3 text-slate-600">{outlet.contactNumber || "-"}</td>}<td className="px-4 py-3"><span className={`inline-flex rounded-full px-2 py-1 text-[11px] font-semibold ${outlet.status === "Active" ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>{outlet.status}</span></td>{(selectedDetail?.type === "inactive" || selectedDetail?.type === "recent") && <td className="px-4 py-3 text-slate-600">{formatDate(outlet.updatedAt)}</td>}</tr>)}</tbody>
+
+          {isMissingDegicView && (
+            <div className="w-full max-w-xs shrink-0">
+              <Select
+                id="missing-degic-area-filter"
+                label="Area"
+                options={MISSING_DEGIC_AREA_OPTIONS}
+                value={missingDegicAreaFilter}
+                onChange={(event) => setMissingDegicAreaFilter(event.target.value)}
+              />
+            </div>
+          )}
+
+          {filteredRows.length === 0 ? (
+            <div
+              className={`rounded-xl border border-dashed border-slate-300 px-4 py-10 text-center text-sm text-slate-500 ${
+                isMissingDegicView ? "flex flex-1 items-center justify-center" : ""
+              }`}
+            >
+              {isMissingDegicView && missingDegicAreaFilter !== ALL_AREAS
+                ? `No ${missingDegicAreaFilter} outlets are missing a DEGIC Number.`
+                : "No outlets match this review list."}
+            </div>
+          ) : (
+            <div
+              className={
+                isMissingDegicView
+                  ? "min-h-0 max-h-[65vh] flex-1 overflow-auto rounded-xl border border-slate-200"
+                  : "max-h-[min(60vh,28rem)] overflow-auto rounded-xl border border-slate-200"
+              }
+            >
+              <table
+                className={`w-full table-fixed text-left text-sm ${
+                  isMissingDegicView ? "min-w-[38rem] md:min-w-0" : "min-w-[38rem]"
+                }`}
+              >
+                <thead className="sticky top-0 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <th className={`${isMissingDegicView ? "w-[30%]" : "w-[24%]"} px-4 py-3 font-semibold`}>
+                      Outlet Name
+                    </th>
+                    <th className="w-[10%] px-4 py-3 font-semibold">Area</th>
+                    <th className={`${isMissingDegicView ? "w-[30%]" : "w-[22%]"} px-4 py-3 font-semibold`}>
+                      Contact Person
+                    </th>
+                    {selectedDetail?.type !== "recent" && (
+                      <th className={`${isMissingDegicView ? "w-[30%]" : "w-[20%]"} px-4 py-3 font-semibold`}>
+                        Contact Number
+                      </th>
+                    )}
+                    {!isMissingDegicView && (
+                      <th className="w-[12%] px-4 py-3 font-semibold">Status</th>
+                    )}
+                    {selectedDetail?.type === "inactive" && (
+                      <th className="w-[18%] px-4 py-3 font-semibold">Last Updated</th>
+                    )}
+                    {selectedDetail?.type === "recent" && (
+                      <th className="w-[18%] px-4 py-3 font-semibold">Updated Date</th>
+                    )}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filteredRows.map((outlet) => (
+                    <tr key={outlet.id} className="hover:bg-slate-50">
+                      <td className="break-words px-4 py-3 font-medium text-slate-800">
+                        {outlet.outletName}
+                      </td>
+                      <td className="break-words px-4 py-3 text-slate-600">
+                        {outlet.areaCode || "-"}
+                      </td>
+                      <td className="break-words px-4 py-3 text-slate-600">
+                        {outlet.contactPerson || "-"}
+                      </td>
+                      {selectedDetail?.type !== "recent" && (
+                        <td className="break-words px-4 py-3 text-slate-600">
+                          {outlet.contactNumber || "-"}
+                        </td>
+                      )}
+                      {!isMissingDegicView && (
+                        <td className="px-4 py-3">
+                          <span
+                            className={`inline-flex rounded-full px-2 py-1 text-[11px] font-semibold ${
+                              outlet.status === "Active"
+                                ? "bg-emerald-50 text-emerald-700"
+                                : "bg-slate-100 text-slate-600"
+                            }`}
+                          >
+                            {outlet.status}
+                          </span>
+                        </td>
+                      )}
+                      {(selectedDetail?.type === "inactive" ||
+                        selectedDetail?.type === "recent") && (
+                        <td className="px-4 py-3 text-slate-600">
+                          {formatDate(outlet.updatedAt)}
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
               </table>
             </div>
           )}
-          <div className="flex flex-col-reverse gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
+          <div
+            className={`flex shrink-0 flex-col-reverse gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between ${
+              isMissingDegicView ? "mt-auto" : ""
+            }`}
+          >
             <div className="flex flex-wrap gap-2">
               {selectedDetail?.type === "issue" && selectedDetail.label === "Missing DEGIC Number" && (
                 <Button
                   type="button"
                   variant="secondary"
-                  onClick={() => exportMissingDegicOutlets(detailOutlets)}
+                  onClick={() => exportMissingDegicOutlets(filteredRows)}
                   className="gap-2"
+                  disabled={filteredRows.length === 0}
                 >
                   <Download size={16} /> Download Missing Rows
                 </Button>
