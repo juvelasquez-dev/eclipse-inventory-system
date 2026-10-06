@@ -17,6 +17,7 @@ import Button from "../../components/ui/Button";
 import Modal from "../../components/ui/Modal";
 import Select from "../../components/ui/Select";
 import { useInventoryContext } from "../../context/InventoryContext";
+import { supabase } from "../../lib/supabase";
 import type { Outlet } from "../../types/inventory";
 import {
   exportMissingDegicOutlets,
@@ -38,6 +39,28 @@ type DetailView =
   | { type: "attention" }
   | { type: "inactive" }
   | { type: "recent" };
+
+interface OutletChangeLog {
+  id: string;
+  outlet_id: string | null;
+  action: "CREATED" | "UPDATED";
+  changed_fields: Record<string, { old: unknown; new: unknown }>;
+  actor_username: string | null;
+  created_at: string;
+}
+
+const OUTLET_CHANGE_FIELD_LABELS: Record<string, string> = {
+  outlet_name: "Outlet Name",
+  contact_person: "Contact Person",
+  contact_number: "Contact Number",
+  complete_address: "Complete Address",
+  area_code: "Area",
+  degic_number: "DEGIC Number",
+  tin: "TIN",
+  id_type: "ID Type",
+  id_number: "ID Number",
+  status: "Status",
+};
 
 function hasText(value?: string) {
   return Boolean(value?.trim());
@@ -84,6 +107,20 @@ function formatDate(value?: string) {
   });
 }
 
+function formatDateTime(value?: string) {
+  if (!value) return "Not available";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Not available";
+
+  return date.toLocaleString("en-PH", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 function issueTone(label: string) {
   if (label === "Missing DEGIC Number") return "bg-amber-50 text-amber-700 ring-amber-200";
   if (label === "Missing TIN / ID") return "bg-violet-50 text-violet-700 ring-violet-200";
@@ -96,6 +133,11 @@ export default function OutletDashboard() {
   const { outlets } = useInventoryContext();
   const [selectedDetail, setSelectedDetail] = useState<DetailView | null>(null);
   const [missingDegicAreaFilter, setMissingDegicAreaFilter] = useState(ALL_AREAS);
+  const [recentChangeByOutlet, setRecentChangeByOutlet] = useState<
+    Record<string, OutletChangeLog>
+  >({});
+  const [recentHistoryLoading, setRecentHistoryLoading] = useState(false);
+  const [recentHistoryError, setRecentHistoryError] = useState(false);
 
   const summary = useMemo(() => {
     const activeCount = outlets.filter(
@@ -186,6 +228,8 @@ export default function OutletDashboard() {
   const isMissingDegicView =
     selectedDetail?.type === "issue" &&
     selectedDetail.label === "Missing DEGIC Number";
+  const isRecentView = selectedDetail?.type === "recent";
+  const isWideDetailView = isMissingDegicView || isRecentView;
 
   const filteredRows = useMemo(
     () =>
@@ -200,6 +244,51 @@ export default function OutletDashboard() {
   function openDetail(detail: DetailView) {
     setMissingDegicAreaFilter(ALL_AREAS);
     setSelectedDetail(detail);
+
+    if (detail.type !== "recent") {
+      return;
+    }
+
+    setRecentHistoryLoading(true);
+    setRecentHistoryError(false);
+    setRecentChangeByOutlet({});
+
+    const outletIds = recentlyUpdated.map((outlet) => outlet.id);
+    if (outletIds.length === 0) {
+      setRecentHistoryLoading(false);
+      return;
+    }
+
+    void (async () => {
+      try {
+        const { data, error } = await supabase
+          .from("outlet_change_logs")
+          .select("id, outlet_id, action, changed_fields, actor_username, created_at")
+          .in("outlet_id", outletIds)
+          .order("created_at", { ascending: false });
+
+        if (error) {
+          console.error("Unable to load recent outlet history:", error);
+          setRecentHistoryError(true);
+          return;
+        }
+
+        const latestByOutlet: Record<string, OutletChangeLog> = {};
+
+        for (const row of (data ?? []) as OutletChangeLog[]) {
+          if (row.outlet_id && !latestByOutlet[row.outlet_id]) {
+            latestByOutlet[row.outlet_id] = row;
+          }
+        }
+
+        setRecentChangeByOutlet(latestByOutlet);
+      } catch (error) {
+        console.error("Unable to load recent outlet history:", error);
+        setRecentHistoryError(true);
+      } finally {
+        setRecentHistoryLoading(false);
+      }
+    })();
   }
 
   const detailTitle = !selectedDetail
@@ -455,11 +544,11 @@ export default function OutletDashboard() {
         open={selectedDetail !== null}
         onClose={() => setSelectedDetail(null)}
         title={detailTitle}
-        wide={isMissingDegicView}
+        wide={isWideDetailView}
       >
         <div
           className={
-            isMissingDegicView
+            isWideDetailView
               ? "flex min-h-0 flex-1 flex-col gap-4"
               : "space-y-5"
           }
@@ -486,7 +575,7 @@ export default function OutletDashboard() {
           {filteredRows.length === 0 ? (
             <div
               className={`rounded-xl border border-dashed border-slate-300 px-4 py-10 text-center text-sm text-slate-500 ${
-                isMissingDegicView ? "flex flex-1 items-center justify-center" : ""
+                isWideDetailView ? "flex flex-1 items-center justify-center" : ""
               }`}
             >
               {isMissingDegicView && missingDegicAreaFilter !== ALL_AREAS
@@ -496,11 +585,95 @@ export default function OutletDashboard() {
           ) : (
             <div
               className={
-                isMissingDegicView
+                isWideDetailView
                   ? "min-h-0 max-h-[65vh] flex-1 overflow-auto rounded-xl border border-slate-200"
                   : "max-h-[min(60vh,28rem)] overflow-auto rounded-xl border border-slate-200"
               }
             >
+              {isRecentView ? (
+                <table className="w-full min-w-[70rem] table-fixed text-left text-sm">
+                  <thead className="sticky top-0 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                    <tr>
+                      <th className="w-[17%] px-3 py-3 font-semibold">Outlet Name</th>
+                      <th className="w-[6%] px-3 py-3 font-semibold">Area</th>
+                      <th className="w-[12%] px-3 py-3 font-semibold">Contact Person</th>
+                      <th className="w-[13%] px-3 py-3 font-semibold">Contact Number</th>
+                      <th className="w-[8%] px-3 py-3 font-semibold">Status</th>
+                      <th className="w-[10%] px-3 py-3 font-semibold">Activity</th>
+                      <th className="w-[15%] px-3 py-3 font-semibold">What Changed</th>
+                      <th className="w-[10%] px-3 py-3 font-semibold">Date</th>
+                      <th className="w-[9%] px-3 py-3 font-semibold">Changed By</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {detailOutlets.map((outlet) => {
+                      const history = recentChangeByOutlet[outlet.id];
+                      const changedFields = history?.changed_fields
+                        ? Object.keys(history.changed_fields)
+                            .map((field) => OUTLET_CHANGE_FIELD_LABELS[field])
+                            .filter(Boolean)
+                            .join(", ")
+                        : "";
+
+                      return (
+                        <tr key={outlet.id} className="align-top hover:bg-slate-50">
+                          <td className="break-words px-3 py-3 font-medium text-slate-800">
+                            {outlet.outletName}
+                          </td>
+                          <td className="break-words px-3 py-3 text-slate-600">
+                            {outlet.areaCode || "-"}
+                          </td>
+                          <td className="break-words px-3 py-3 text-slate-600">
+                            {outlet.contactPerson || "-"}
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-3 text-slate-600">
+                            {outlet.contactNumber || "-"}
+                          </td>
+                          <td className="px-3 py-3">
+                            <span
+                              className={`inline-flex rounded-full px-2 py-1 text-[11px] font-semibold ${
+                                outlet.status === "Active"
+                                  ? "bg-emerald-50 text-emerald-700"
+                                  : "bg-slate-100 text-slate-600"
+                              }`}
+                            >
+                              {outlet.status}
+                            </span>
+                          </td>
+                          <td className="break-words px-3 py-3 text-slate-700">
+                            {recentHistoryLoading
+                              ? "Loading..."
+                              : history?.action === "CREATED"
+                                ? "Newly Added"
+                                : "Updated"}
+                          </td>
+                          <td className="break-words px-3 py-3 text-slate-600">
+                            {recentHistoryLoading
+                              ? "Loading..."
+                              : recentHistoryError
+                                ? "History unavailable"
+                                : history?.action === "CREATED"
+                                  ? "—"
+                                  : history
+                                    ? changedFields || "—"
+                                    : "History not available"}
+                          </td>
+                          <td className="px-3 py-3 text-slate-600">
+                            {formatDateTime(history?.created_at ?? outlet.updatedAt)}
+                          </td>
+                          <td className="break-words px-3 py-3 text-slate-600">
+                            {recentHistoryLoading
+                              ? "Loading..."
+                              : recentHistoryError
+                                ? "—"
+                                : history?.actor_username || "—"}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              ) : (
               <table
                 className={`w-full table-fixed text-left text-sm ${
                   isMissingDegicView ? "min-w-[38rem] md:min-w-0" : "min-w-[38rem]"
@@ -515,19 +688,14 @@ export default function OutletDashboard() {
                     <th className={`${isMissingDegicView ? "w-[30%]" : "w-[22%]"} px-4 py-3 font-semibold`}>
                       Contact Person
                     </th>
-                    {selectedDetail?.type !== "recent" && (
-                      <th className={`${isMissingDegicView ? "w-[30%]" : "w-[20%]"} px-4 py-3 font-semibold`}>
-                        Contact Number
-                      </th>
-                    )}
+                    <th className={`${isMissingDegicView ? "w-[30%]" : "w-[20%]"} px-4 py-3 font-semibold`}>
+                      Contact Number
+                    </th>
                     {!isMissingDegicView && (
                       <th className="w-[12%] px-4 py-3 font-semibold">Status</th>
                     )}
                     {selectedDetail?.type === "inactive" && (
                       <th className="w-[18%] px-4 py-3 font-semibold">Last Updated</th>
-                    )}
-                    {selectedDetail?.type === "recent" && (
-                      <th className="w-[18%] px-4 py-3 font-semibold">Updated Date</th>
                     )}
                   </tr>
                 </thead>
@@ -543,11 +711,9 @@ export default function OutletDashboard() {
                       <td className="break-words px-4 py-3 text-slate-600">
                         {outlet.contactPerson || "-"}
                       </td>
-                      {selectedDetail?.type !== "recent" && (
-                        <td className="break-words px-4 py-3 text-slate-600">
-                          {outlet.contactNumber || "-"}
-                        </td>
-                      )}
+                      <td className="break-words px-4 py-3 text-slate-600">
+                        {outlet.contactNumber || "-"}
+                      </td>
                       {!isMissingDegicView && (
                         <td className="px-4 py-3">
                           <span
@@ -561,8 +727,7 @@ export default function OutletDashboard() {
                           </span>
                         </td>
                       )}
-                      {(selectedDetail?.type === "inactive" ||
-                        selectedDetail?.type === "recent") && (
+                      {selectedDetail?.type === "inactive" && (
                         <td className="px-4 py-3 text-slate-600">
                           {formatDate(outlet.updatedAt)}
                         </td>
@@ -571,11 +736,12 @@ export default function OutletDashboard() {
                   ))}
                 </tbody>
               </table>
+              )}
             </div>
           )}
           <div
             className={`flex shrink-0 flex-col-reverse gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between ${
-              isMissingDegicView ? "mt-auto" : ""
+              isWideDetailView ? "mt-auto" : ""
             }`}
           >
             <div className="flex flex-wrap gap-2">
