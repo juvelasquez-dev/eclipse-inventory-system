@@ -15,6 +15,7 @@ import System from "./pages/System/System";
 import Admin from "./pages/Admin/Admin";
 import UserManagement from "./pages/Admin/UserManagement";
 import AuditLogs from "./pages/Admin/AuditLogs";
+import ChangePassword from "./pages/Admin/ChangePassword";
 import POS from "./pages/POS/POS";
 import POSHistory from "./pages/POS/POSHistory";
 import IAOOutletOrders from "./pages/IAOOutletOrders/IAOOutletOrders";
@@ -72,6 +73,11 @@ function App() {
                 <Route
                   path="/admin/audit-logs"
                   element={<AuditLogs />}
+                />
+
+                <Route
+                  path="/admin/change-password"
+                  element={<ChangePassword />}
                 />
               </Route>
 

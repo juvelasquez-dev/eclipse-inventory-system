@@ -21,6 +21,7 @@ const ACTION_OPTIONS = [
   { label: "Area Changed", value: "USER_AREA_CHANGED" },
   { label: "Status Changed", value: "USER_STATUS_CHANGED" },
   { label: "User Created", value: "USER_CREATED" },
+  { label: "Password Reset by Admin", value: "PASSWORD_RESET_BY_ADMIN" },
 ];
 
 /*
