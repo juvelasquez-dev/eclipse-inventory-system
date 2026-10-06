@@ -21,6 +21,7 @@ const ACTION_OPTIONS = [
   { label: "Area Changed", value: "USER_AREA_CHANGED" },
   { label: "Status Changed", value: "USER_STATUS_CHANGED" },
   { label: "User Created", value: "USER_CREATED" },
+  { label: "Username Changed", value: "USERNAME_CHANGED" },
   { label: "Password Reset by Admin", value: "PASSWORD_RESET_BY_ADMIN" },
 ];
 
@@ -121,7 +122,7 @@ export default function AuditLogs() {
         </h1>
 
         <p className="mt-2 text-sm text-slate-500">
-          Review admin actions taken on user role, area, and status.
+          Review admin actions taken on user accounts.
         </p>
 
         <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-end">

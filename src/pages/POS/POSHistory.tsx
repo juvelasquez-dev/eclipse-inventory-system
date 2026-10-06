@@ -323,10 +323,15 @@ export default function POSHistory() {
         itemRows = loadedItems ?? [];
       }
 
+      const { data: profileUsername, error: usernameError } =
+        await supabase.rpc("get_current_username");
+
+      if (usernameError) {
+        console.error("Unable to load current username:", usernameError);
+      }
+
       const currentUsername =
-        user.user_metadata?.username ||
-        user.user_metadata?.user_name ||
-        user.email?.split("@")[0] ||
+        profileUsername ||
         "Unknown cashier";
 
       const cashierUserIds = Array.from(

@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Eye, EyeOff, KeyRound, Loader2, Plus } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff, KeyRound, Loader2, Pencil, Plus } from "lucide-react";
 
 import Input from "../../components/ui/Input";
 import Modal from "../../components/ui/Modal";
@@ -11,6 +11,7 @@ import { useToast } from "../../context/ToastContext";
 import { supabase } from "../../lib/supabase";
 
 interface AdminUserRow {
+  profileId: string;
   username: string;
   email: string;
   role: "ADMIN" | "STAFF";
@@ -30,6 +31,11 @@ interface NewUserForm {
 interface PasswordResetTarget {
   username: string;
   role: "ADMIN" | "STAFF";
+}
+
+interface UsernameChangeTarget {
+  profileId: string;
+  username: string;
 }
 
 const EMPTY_NEW_USER: NewUserForm = {
@@ -75,12 +81,17 @@ const MIN_PASSWORD_LENGTH = 8;
  */
 function mapUserRow(row: any): AdminUserRow {
   return {
+    profileId: row.profile_id,
     username: row.username,
     email: row.email,
     role: row.role,
     status: row.status,
     areaCode: row.area_code ?? null,
   };
+}
+
+function normalizeUsername(username: string) {
+  return username.trim().toLowerCase();
 }
 
 function generateTemporaryPassword() {
@@ -130,6 +141,14 @@ export default function UserManagement() {
   const [resetError, setResetError] = useState("");
   const [confirmResetOpen, setConfirmResetOpen] = useState(false);
   const [resettingPassword, setResettingPassword] = useState(false);
+  const [usernameChangeTarget, setUsernameChangeTarget] =
+    useState<UsernameChangeTarget | null>(null);
+  const [newUsername, setNewUsername] = useState("");
+  const [usernameChangeError, setUsernameChangeError] = useState("");
+  const [pendingUsernameChange, setPendingUsernameChange] =
+    useState<{ target: UsernameChangeTarget; newUsername: string } | null>(null);
+  const [savingUsernameChange, setSavingUsernameChange] = useState(false);
+  const usernameChangeInFlight = useRef(false);
 
   async function loadUsers() {
     setLoading(true);
@@ -210,6 +229,125 @@ export default function UserManagement() {
     setShowResetPassword(false);
     setResetError("");
     setConfirmResetOpen(false);
+  }
+
+  function openUsernameChange(user: AdminUserRow) {
+    if (isCurrentUser(user)) {
+      return;
+    }
+
+    setUsernameChangeTarget({
+      profileId: user.profileId,
+      username: user.username,
+    });
+    setNewUsername(user.username);
+    setUsernameChangeError("");
+    setPendingUsernameChange(null);
+  }
+
+  function closeUsernameChange() {
+    if (usernameChangeInFlight.current) {
+      return;
+    }
+
+    setUsernameChangeTarget(null);
+    setNewUsername("");
+    setUsernameChangeError("");
+    setPendingUsernameChange(null);
+  }
+
+  function prepareUsernameChange(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setUsernameChangeError("");
+
+    if (!usernameChangeTarget) {
+      return;
+    }
+
+    const trimmedUsername = newUsername.trim();
+    if (!trimmedUsername) {
+      setUsernameChangeError("Username cannot be blank.");
+      return;
+    }
+
+    if (trimmedUsername === usernameChangeTarget.username) {
+      setUsernameChangeError("Enter a different username.");
+      return;
+    }
+
+    const normalizedUsername = normalizeUsername(trimmedUsername);
+    const duplicate = users.some(
+      (user) =>
+        user.profileId !== usernameChangeTarget.profileId &&
+        normalizeUsername(user.username) === normalizedUsername
+    );
+
+    if (duplicate) {
+      setUsernameChangeError("That username is already in use.");
+      return;
+    }
+
+    setPendingUsernameChange({
+      target: usernameChangeTarget,
+      newUsername: trimmedUsername,
+    });
+  }
+
+  async function confirmUsernameChange() {
+    const pending = pendingUsernameChange;
+
+    if (!pending || usernameChangeInFlight.current) {
+      return;
+    }
+
+    usernameChangeInFlight.current = true;
+    setSavingUsernameChange(true);
+    setUsernameChangeError("");
+    setPendingUsernameChange(null);
+
+    try {
+      const { error } = await supabase.rpc("admin_change_username", {
+        p_target_profile_id: pending.target.profileId,
+        p_expected_username: pending.target.username,
+        p_new_username: pending.newUsername,
+      });
+
+      if (error) {
+        const message = error.message.toLowerCase();
+        setUsernameChangeError(
+          message.includes("username is already in use")
+            ? "That username is already in use."
+            : message.includes("username has changed")
+              ? "This username has changed. Refresh the user list and try again."
+              : message.includes("username cannot be blank")
+                ? "Username cannot be blank."
+                : "Unable to update username. Please try again."
+        );
+        return;
+      }
+
+      setUsers((current) =>
+        current.map((user) =>
+          user.profileId === pending.target.profileId
+            ? { ...user, username: pending.newUsername }
+            : user
+        )
+      );
+      setUsernameChangeTarget(null);
+      setNewUsername("");
+      setUsernameChangeError("");
+      showToast(
+        `Updated ${pending.target.username}'s username to ${pending.newUsername}.`,
+        "success"
+      );
+    } catch {
+      setUsernameChangeError(
+        "Unable to update username. Please try again."
+      );
+    } finally {
+      usernameChangeInFlight.current = false;
+      setSavingUsernameChange(false);
+    }
   }
 
   function closePasswordReset() {
@@ -386,6 +524,15 @@ export default function UserManagement() {
       setNewUser((current) => ({ ...current, password: "" }));
       setShowTemporaryPassword(false);
       showToast("Complete all fields before creating the user.", "error");
+      return;
+    }
+
+    if (
+      users.some(
+        (user) => normalizeUsername(user.username) === normalizeUsername(username)
+      )
+    ) {
+      showToast("That username is already in use.", "error");
       return;
     }
 
@@ -569,7 +716,7 @@ export default function UserManagement() {
         </div>
 
         <p className="mt-2 text-sm text-slate-500">
-          View system users and manage their role, status, and area assignment.
+          View system users and manage their username, role, status, and area assignment.
         </p>
 
         <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5 lg:items-end">
@@ -658,7 +805,7 @@ export default function UserManagement() {
                 <tbody className="divide-y divide-slate-100">
                   {filteredUsers.map((user) => (
                     <tr
-                      key={user.username}
+                      key={user.profileId}
                       className="transition-colors hover:bg-slate-50"
                     >
                       <td className="px-6 py-4 text-sm font-medium text-slate-900">
@@ -746,27 +893,50 @@ export default function UserManagement() {
                       </td>
 
                       <td className="px-6 py-4">
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          className="gap-2 whitespace-nowrap"
-                          onClick={() => openPasswordReset(user)}
-                          disabled={
-                            currentEmail === null ||
-                            isCurrentUser(user) ||
-                            resettingPassword
-                          }
-                          title={
-                            isCurrentUser(user)
-                              ? "Use Change My Password for your own account."
-                              : currentEmail === null
-                                ? "Checking current account..."
-                              : `Reset ${user.username}'s password`
-                          }
-                        >
-                          <KeyRound size={15} />
-                          Reset Password
-                        </Button>
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            className="gap-2 whitespace-nowrap"
+                            onClick={() => openUsernameChange(user)}
+                            disabled={
+                              currentEmail === null ||
+                              isCurrentUser(user) ||
+                              savingUsernameChange
+                            }
+                            title={
+                              isCurrentUser(user)
+                                ? "You cannot change your own username."
+                                : currentEmail === null
+                                  ? "Checking current account..."
+                                  : `Edit ${user.username}'s username`
+                            }
+                          >
+                            <Pencil size={15} />
+                            Edit Username
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            className="gap-2 whitespace-nowrap"
+                            onClick={() => openPasswordReset(user)}
+                            disabled={
+                              currentEmail === null ||
+                              isCurrentUser(user) ||
+                              resettingPassword
+                            }
+                            title={
+                              isCurrentUser(user)
+                                ? "Use Change My Password for your own account."
+                                : currentEmail === null
+                                  ? "Checking current account..."
+                                  : `Reset ${user.username}'s password`
+                            }
+                          >
+                            <KeyRound size={15} />
+                            Reset Password
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -793,6 +963,74 @@ export default function UserManagement() {
         message={pendingChange ? getConfirmContent(pendingChange).message : ""}
         onCancel={() => setPendingChange(null)}
         onConfirm={() => void confirmPendingChange()}
+      />
+
+      <Modal
+        open={usernameChangeTarget !== null}
+        title="Edit Username"
+        onClose={closeUsernameChange}
+      >
+        {usernameChangeTarget && (
+          <form onSubmit={prepareUsernameChange} className="space-y-4">
+            <p className="text-sm text-slate-600">
+              Change the username for{" "}
+              <span className="font-semibold text-slate-900">
+                {usernameChangeTarget.username}
+              </span>
+              . Email and sign-in credentials will remain unchanged.
+            </p>
+
+            <Input
+              id="edit-user-username"
+              label="New Username"
+              autoComplete="off"
+              required
+              value={newUsername}
+              onChange={(event) => setNewUsername(event.target.value)}
+              disabled={savingUsernameChange}
+            />
+
+            {usernameChangeError && (
+              <div
+                role="alert"
+                className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
+              >
+                {usernameChangeError}
+              </div>
+            )}
+
+            <div className="flex justify-end gap-3 pt-2">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={closeUsernameChange}
+                disabled={savingUsernameChange}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={savingUsernameChange}>
+                Continue
+              </Button>
+            </div>
+          </form>
+        )}
+      </Modal>
+
+      <ConfirmModal
+        open={pendingUsernameChange !== null}
+        title="Confirm Username Change"
+        message={
+          pendingUsernameChange
+            ? `Change ${pendingUsernameChange.target.username}'s username to ${pendingUsernameChange.newUsername}?`
+            : ""
+        }
+        confirmText={savingUsernameChange ? "Saving..." : "Change Username"}
+        onCancel={() => {
+          if (!usernameChangeInFlight.current) {
+            setPendingUsernameChange(null);
+          }
+        }}
+        onConfirm={() => void confirmUsernameChange()}
       />
 
       <Modal

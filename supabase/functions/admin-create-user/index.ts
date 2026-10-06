@@ -238,17 +238,20 @@ async function handleRequest(request: Request) {
     return jsonResponse({ error: "Select a valid status." }, 400);
   }
 
-  const { data: existingProfile, error: usernameCheckError } = await serviceClient
-    .from("users")
-    .select("id")
-    .eq("username", username)
-    .maybeSingle();
+  const { data: usernameExists, error: usernameCheckError } = await serviceClient.rpc(
+    "admin_username_exists",
+    { p_username: username },
+  );
 
   if (usernameCheckError) {
     return jsonResponse({ error: "Unable to verify username availability." }, 500);
   }
 
-  if (existingProfile) {
+  if (typeof usernameExists !== "boolean") {
+    return jsonResponse({ error: "Unable to verify username availability." }, 500);
+  }
+
+  if (usernameExists) {
     return jsonResponse({ error: "That username is already in use." }, 409);
   }
 

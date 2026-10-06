@@ -46,13 +46,15 @@ export default function Topbar({
         return;
       }
 
-      const metadataUsername =
-        user.user_metadata?.username ||
-        user.user_metadata?.user_name;
+      const { data: profileUsername, error: usernameError } =
+        await supabase.rpc("get_current_username");
+
+      if (usernameError) {
+        console.error("Unable to load current username:", usernameError);
+      }
 
       setUsername(
-        metadataUsername ||
-          user.email?.split("@")[0] ||
+        profileUsername ||
           "User"
       );
 
@@ -74,6 +76,9 @@ export default function Topbar({
     }
 
     void loadUserIdentity();
+    window.addEventListener("focus", loadUserIdentity);
+
+    return () => window.removeEventListener("focus", loadUserIdentity);
   }, []);
 
   async function handleLogout() {
