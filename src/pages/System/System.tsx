@@ -22,6 +22,18 @@ export default function System() {
   const { role } = useUserRole();
   const { areaCode } = useUserArea();
 
+  /*
+   * Operations grid columns adapt to the number of
+   * visible operational cards (Inventory, POS, Outlets
+   * are always visible; IAO Outlet Orders is area-gated),
+   * so the row stays centered instead of left-aligned
+   * with trailing empty space.
+   */
+  const operationsGridClass =
+    areaCode === "IAO"
+      ? "mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4"
+      : "mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3";
+
   async function handleLogout() {
     const { error } =
       await supabase.auth.signOut();
@@ -165,14 +177,20 @@ export default function System() {
 
           </div>
 
-          {/* System Options */}
-          <div
-            className={`mt-14 grid grid-cols-1 gap-6 md:grid-cols-3 ${
-              role === "ADMIN" || areaCode === "IAO"
-                ? "lg:grid-cols-4"
-                : ""
-            }`}
-          >
+          {/* ===================================================
+              OPERATIONS
+          =================================================== */}
+
+          <div className="mt-14">
+
+            <div className="flex items-center gap-3">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                Operations
+              </span>
+              <span className="h-px flex-1 bg-slate-200" aria-hidden="true" />
+            </div>
+
+            <div className={operationsGridClass}>
 
             {/* Inventory */}
             <button
@@ -376,63 +394,55 @@ export default function System() {
               </button>
             )}
 
-            {/* Administration (ADMIN only) */}
-            {role === "ADMIN" && (
+            </div>
+
+          </div>
+
+          {/* ===================================================
+              SYSTEM ADMINISTRATION (ADMIN only)
+          =================================================== */}
+
+          {role === "ADMIN" && (
+            <div className="mt-12">
+
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                  System Administration
+                </span>
+                <span className="h-px flex-1 bg-slate-200" aria-hidden="true" />
+              </div>
+
               <button
                 type="button"
                 onClick={() => navigate("/admin")}
-                className="group relative overflow-hidden rounded-3xl border border-indigo-100 bg-gradient-to-b from-white to-indigo-50/40 p-8 text-left shadow-sm transition-all duration-300 hover:-translate-y-1.5 hover:border-indigo-300 hover:shadow-xl hover:shadow-indigo-900/10"
+                className="group relative mt-6 flex w-full items-center gap-4 rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm transition-all duration-200 hover:border-indigo-200 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500"
               >
 
-                <ShieldCheck
-                  size={140}
-                  strokeWidth={1}
-                  className="pointer-events-none absolute -bottom-6 -right-6 text-indigo-600/[0.08] transition-transform duration-500 group-hover:scale-110 group-hover:rotate-6"
-                />
+                <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 transition-colors duration-200 group-hover:bg-indigo-100">
+                  <ShieldCheck size={22} />
+                </div>
 
-                <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-gradient-to-br from-indigo-300/0 to-blue-300/0 blur-2xl transition-all duration-300 group-hover:from-indigo-300/30 group-hover:to-blue-200/20" />
+                <div className="min-w-0 flex-1">
 
-                <div className="relative">
-
-                  <div className="flex items-start justify-between">
-
-                    <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-600 text-white shadow-md shadow-indigo-900/20 transition-transform duration-300 group-hover:scale-105 group-hover:-rotate-3">
-                      <ShieldCheck size={26} />
-                    </div>
-
-                    <ArrowRight
-                      size={20}
-                      className="text-indigo-300 transition-all duration-300 group-hover:translate-x-1 group-hover:text-indigo-600"
-                    />
-
-                  </div>
-
-                  <h2 className="mt-7 text-xl font-bold tracking-tight text-slate-900">
+                  <h2 className="text-base font-bold tracking-tight text-slate-900">
                     Administration
                   </h2>
 
-                  <p className="mt-2.5 text-sm leading-6 text-slate-500">
-                    Manage system-wide settings,
-                    users, and administrative
-                    operations.
+                  <p className="mt-0.5 truncate text-sm leading-6 text-slate-500 sm:whitespace-normal">
+                    Manage system-wide settings, users, and administrative operations.
                   </p>
-
-                  <div className="mt-6 inline-flex items-center gap-1.5 text-sm font-semibold text-indigo-600">
-                    Open Administration
-
-                    <ArrowRight
-                      size={14}
-                      className="transition-transform duration-300 group-hover:translate-x-1"
-                    />
-
-                  </div>
 
                 </div>
 
-              </button>
-            )}
+                <ArrowRight
+                  size={18}
+                  className="flex-shrink-0 text-slate-300 transition-all duration-200 group-hover:translate-x-1 group-hover:text-indigo-600"
+                />
 
-          </div>
+              </button>
+
+            </div>
+          )}
 
         </div>
 
