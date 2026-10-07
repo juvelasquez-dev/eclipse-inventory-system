@@ -1,8 +1,10 @@
 import {
   createContext,
   useContext,
+  useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -26,6 +28,18 @@ interface InventoryContextType {
   inventory: (Product & {
     stock: number;
   })[];
+
+  isLoading: boolean;
+
+  loadError: string | null;
+
+  loadOperationalData: (
+    userId: string
+  ) => Promise<void>;
+
+  clearOperationalData: () => void;
+
+  retryOperationalData: () => Promise<void>;
 
   addProduct: (
     product: Product
@@ -76,6 +90,47 @@ const InventoryContext =
 
 interface Props {
   children: ReactNode;
+}
+
+type LoadResult<T> =
+  | { succeeded: true; data: T }
+  | { succeeded: false; error: unknown };
+
+interface OperationalDataOperation {
+  generation: number;
+  userId: string;
+}
+
+async function captureLoad<T>(
+  load: () => Promise<T>
+): Promise<LoadResult<T>> {
+  try {
+    return {
+      succeeded: true,
+      data: await load(),
+    };
+  } catch (error) {
+    return {
+      succeeded: false,
+      error,
+    };
+  }
+}
+
+function getErrorMessage(error: unknown) {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "message" in error
+  ) {
+    return String(error.message);
+  }
+
+  return String(error);
 }
 
 /*
@@ -198,10 +253,334 @@ export function InventoryProvider({
   const [outlets, setOutlets] =
     useState<Outlet[]>([]);
 
+  const [isLoading, setIsLoading] =
+    useState(false);
+
+  const [loadError, setLoadError] =
+    useState<string | null>(null);
+
+  const loadRequestIdRef = useRef(0);
+  const operationGenerationRef = useRef(0);
+  const activeUserIdRef = useRef<string | null>(null);
+  const attemptedUserIdRef = useRef<string | null>(null);
+  const inFlightLoadRef = useRef<{
+    userId: string;
+    promise: Promise<void>;
+  } | null>(null);
+
+  const getOperation = useCallback(
+    (): OperationalDataOperation | null => {
+      const userId = activeUserIdRef.current;
+      if (!userId) {
+        return null;
+      }
+
+      return {
+        generation: operationGenerationRef.current,
+        userId,
+      };
+    },
+    []
+  );
+
+  const isCurrentOperation = useCallback(
+    (operation: OperationalDataOperation | null) =>
+      Boolean(
+        operation &&
+        operation.generation === operationGenerationRef.current &&
+        operation.userId === activeUserIdRef.current
+      ),
+    []
+  );
+
+  const clearOperationalData = useCallback(() => {
+    loadRequestIdRef.current += 1;
+    operationGenerationRef.current += 1;
+    activeUserIdRef.current = null;
+    attemptedUserIdRef.current = null;
+    inFlightLoadRef.current = null;
+    setProducts([]);
+    setTransactions([]);
+    setOutlets([]);
+    setIsLoading(false);
+    setLoadError(null);
+  }, []);
+
+  const loadForUser = useCallback(
+    (
+      userId: string,
+      force: boolean
+    ): Promise<void> => {
+      if (activeUserIdRef.current !== userId) {
+        loadRequestIdRef.current += 1;
+        operationGenerationRef.current += 1;
+        activeUserIdRef.current = userId;
+        attemptedUserIdRef.current = null;
+        inFlightLoadRef.current = null;
+        setProducts([]);
+        setTransactions([]);
+        setOutlets([]);
+        setLoadError(null);
+      }
+
+      const currentLoad = inFlightLoadRef.current;
+      if (currentLoad?.userId === userId) {
+        return currentLoad.promise;
+      }
+
+      if (!force && attemptedUserIdRef.current === userId) {
+        return Promise.resolve();
+      }
+
+      attemptedUserIdRef.current = userId;
+      operationGenerationRef.current += 1;
+      const requestId = ++loadRequestIdRef.current;
+      setIsLoading(true);
+      setLoadError(null);
+
+      const promise = (async () => {
+        const [productResult, transactionResult, outletResult] =
+          await Promise.all([
+            captureLoad(async () => {
+              const { data, error } = await supabase
+                .from("products")
+                .select("*")
+                .order("id");
+
+              if (error) {
+                throw error;
+              }
+
+              return (data ?? []).map(mapProduct);
+            }),
+            captureLoad(async () => {
+              const { data, error } = await supabase
+                .from("transactions")
+                .select("*")
+                .order("date", {
+                  ascending: false,
+                });
+
+              if (error) {
+                throw error;
+              }
+
+              return (data ?? []).map(mapTransaction);
+            }),
+            captureLoad(async () => {
+              const { data, error } = await supabase
+                .from("outlets")
+                .select("*")
+                .order("outlet_name", {
+                  ascending: true,
+                });
+
+              if (error) {
+                throw error;
+              }
+
+              return (data ?? []).map(mapOutlet);
+            }),
+          ]);
+
+        if (
+          loadRequestIdRef.current !== requestId ||
+          activeUserIdRef.current !== userId
+        ) {
+          return;
+        }
+
+        const errors: string[] = [];
+
+        if (!productResult.succeeded) {
+          console.error(
+            "Error loading products:",
+            productResult.error
+          );
+          errors.push(
+            `Products: ${getErrorMessage(productResult.error)}`
+          );
+        } else {
+          setProducts(productResult.data);
+        }
+
+        if (!transactionResult.succeeded) {
+          console.error(
+            "Error loading transactions:",
+            transactionResult.error
+          );
+          errors.push(
+            `Transactions: ${getErrorMessage(transactionResult.error)}`
+          );
+        } else {
+          setTransactions(transactionResult.data);
+        }
+
+        if (!outletResult.succeeded) {
+          console.error(
+            "Error loading outlets:",
+            outletResult.error
+          );
+          errors.push(
+            `Outlets: ${getErrorMessage(outletResult.error)}`
+          );
+        } else {
+          setOutlets(outletResult.data);
+        }
+
+        setLoadError(
+          errors.length > 0
+            ? errors.join(" ")
+            : null
+        );
+      })().finally(() => {
+        if (
+          loadRequestIdRef.current === requestId &&
+          activeUserIdRef.current === userId
+        ) {
+          setIsLoading(false);
+          if (inFlightLoadRef.current?.promise === promise) {
+            inFlightLoadRef.current = null;
+          }
+        }
+      });
+
+      inFlightLoadRef.current = {
+        userId,
+        promise,
+      };
+
+      return promise;
+    },
+    []
+  );
+
+  const loadOperationalData = useCallback(
+    (userId: string) => loadForUser(userId, false),
+    [loadForUser]
+  );
+
+  const retryOperationalData = useCallback(async () => {
+    const operation = {
+      generation: operationGenerationRef.current,
+      userId: activeUserIdRef.current,
+    };
+    const isCurrentRetry = () =>
+      operation.generation === operationGenerationRef.current &&
+      operation.userId === activeUserIdRef.current;
+
+    const {
+      data: { session },
+      error: sessionError,
+    } = await supabase.auth.getSession();
+
+    if (!isCurrentRetry()) {
+      return;
+    }
+
+    if (sessionError) {
+      console.error(
+        "Unable to verify session before retrying operational data load:",
+        sessionError
+      );
+      setLoadError(
+        `Session verification: ${getErrorMessage(sessionError)}`
+      );
+      return;
+    }
+
+    if (!session) {
+      clearOperationalData();
+      return;
+    }
+
+    if (
+      operation.userId &&
+      session.user.id !== operation.userId
+    ) {
+      clearOperationalData();
+      return;
+    }
+
+    const { data: status, error: statusError } =
+      await supabase.rpc("get_current_user_status");
+
+    if (!isCurrentRetry()) {
+      return;
+    }
+
+    if (statusError) {
+      console.error(
+        "Unable to verify account status before retrying operational data load:",
+        statusError
+      );
+      clearOperationalData();
+      setLoadError(
+        `Account status verification: ${getErrorMessage(statusError)}`
+      );
+      return;
+    }
+
+    if (status !== "ACTIVE") {
+      clearOperationalData();
+      setLoadError(
+        "Operational data can only be loaded for an active account."
+      );
+      return;
+    }
+
+    const {
+      data: { session: currentSession },
+      error: currentSessionError,
+    } = await supabase.auth.getSession();
+
+    if (!isCurrentRetry()) {
+      return;
+    }
+
+    if (currentSessionError) {
+      console.error(
+        "Unable to recheck session before retrying operational data load:",
+        currentSessionError
+      );
+      setLoadError(
+        `Session verification: ${getErrorMessage(currentSessionError)}`
+      );
+      return;
+    }
+
+    if (
+      !currentSession ||
+      currentSession.user.id !== session.user.id
+    ) {
+      clearOperationalData();
+      return;
+    }
+
+    await loadForUser(session.user.id, true);
+  }, [
+    clearOperationalData,
+    loadForUser,
+  ]);
+
+  useEffect(
+    () => () => {
+      loadRequestIdRef.current += 1;
+      operationGenerationRef.current += 1;
+      activeUserIdRef.current = null;
+    },
+    []
+  );
+
   /*
    * Load outlets from Supabase.
    */
   async function loadOutlets() {
+    const operation = getOperation();
+    if (!operation) {
+      return;
+    }
+
     const {
       data: outletData,
       error: outletError,
@@ -220,12 +599,21 @@ export function InventoryProvider({
       return;
     }
 
+    if (!isCurrentOperation(operation)) {
+      return;
+    }
+
     setOutlets(
       (outletData ?? []).map(mapOutlet)
     );
   }
 
   async function loadTransactions() {
+    const operation = getOperation();
+    if (!operation) {
+      return;
+    }
+
     const {
       data: transactionData,
       error: transactionError,
@@ -244,71 +632,16 @@ export function InventoryProvider({
       return;
     }
 
+    if (!isCurrentOperation(operation)) {
+      return;
+    }
+
     setTransactions(
       (transactionData ?? []).map(
         mapTransaction
       )
     );
   }
-
-  /*
-   * Load all data from Supabase.
-   */
-  useEffect(() => {
-    async function loadData() {
-      const {
-        data: {
-          session,
-        },
-        error: sessionError,
-      } = await supabase.auth.getSession();
-
-      if (sessionError) {
-        console.error(
-          "Error checking session:",
-          sessionError
-        );
-      }
-
-      if (!session) {
-        console.error(
-          "No active Supabase session found."
-        );
-        return;
-      }
-
-      /*
-       * Load products.
-       */
-      const {
-        data: productData,
-        error: productError,
-      } = await supabase
-        .from("products")
-        .select("*")
-        .order("id");
-
-      if (productError) {
-        console.error(
-          "Error loading products:",
-          productError
-        );
-      } else {
-        setProducts(
-          (productData ?? []).map(mapProduct)
-        );
-      }
-
-      await loadTransactions();
-
-      /*
-       * Load outlets.
-       */
-      await loadOutlets();
-    }
-
-    loadData();
-  }, []);
 
   /*
    * Calculate inventory from products
@@ -329,6 +662,11 @@ export function InventoryProvider({
   async function addProduct(
     product: Product
   ): Promise<boolean> {
+    const operation = getOperation();
+    if (!operation) {
+      return false;
+    }
+
     const exists = products.some(
       (existingProduct) =>
         existingProduct.code
@@ -368,6 +706,10 @@ export function InventoryProvider({
       return false;
     }
 
+    if (!isCurrentOperation(operation)) {
+      return false;
+    }
+
     setProducts((prev) => [
       ...prev,
       mapProduct(data),
@@ -382,6 +724,11 @@ export function InventoryProvider({
   async function updateProduct(
     updatedProduct: Product
   ): Promise<boolean> {
+    const operation = getOperation();
+    if (!operation) {
+      return false;
+    }
+
     const { data, error } =
       await supabase
         .from("products")
@@ -411,6 +758,10 @@ export function InventoryProvider({
       return false;
     }
 
+    if (!isCurrentOperation(operation)) {
+      return false;
+    }
+
     setProducts((prev) =>
       prev.map((product) =>
         product.id ===
@@ -429,6 +780,11 @@ export function InventoryProvider({
   async function deleteProduct(
     id: string
   ): Promise<boolean> {
+    const operation = getOperation();
+    if (!operation) {
+      return false;
+    }
+
     const hasTransactions =
       transactions.some(
         (transaction) =>
@@ -454,6 +810,10 @@ export function InventoryProvider({
       return false;
     }
 
+    if (!isCurrentOperation(operation)) {
+      return false;
+    }
+
     setProducts((prev) =>
       prev.filter(
         (product) =>
@@ -476,6 +836,11 @@ export function InventoryProvider({
     success: boolean;
     message?: string;
   }> {
+    const operation = getOperation();
+    if (!operation) {
+      return { success: false };
+    }
+
     const duplicateExists =
       outlets.some((existingOutlet) =>
         isDuplicateOutlet(existingOutlet, {
@@ -554,6 +919,10 @@ export function InventoryProvider({
       };
     }
 
+    if (!isCurrentOperation(operation)) {
+      return { success: false };
+    }
+
     setOutlets((prev) =>
       [...prev, mapOutlet(data)].sort(
         (a, b) =>
@@ -577,6 +946,11 @@ export function InventoryProvider({
     success: boolean;
     message?: string;
   }> {
+    const operation = getOperation();
+    if (!operation) {
+      return { success: false };
+    }
+
     const duplicateExists =
       outlets.some(
         (outlet) =>
@@ -666,6 +1040,10 @@ export function InventoryProvider({
       };
     }
 
+    if (!isCurrentOperation(operation)) {
+      return { success: false };
+    }
+
     setOutlets((prev) =>
       prev
         .map((outlet) =>
@@ -692,6 +1070,11 @@ export function InventoryProvider({
   async function deleteOutlet(
     id: string
   ): Promise<boolean> {
+    const operation = getOperation();
+    if (!operation) {
+      return false;
+    }
+
     const { error } =
       await supabase
         .from("outlets")
@@ -704,6 +1087,10 @@ export function InventoryProvider({
         error
       );
 
+      return false;
+    }
+
+    if (!isCurrentOperation(operation)) {
       return false;
     }
 
@@ -723,6 +1110,11 @@ export function InventoryProvider({
   async function addTransaction(
     transaction: Transaction
   ): Promise<boolean> {
+    const operation = getOperation();
+    if (!operation) {
+      return false;
+    }
+
     const productExists =
       products.some(
         (product) =>
@@ -775,6 +1167,10 @@ export function InventoryProvider({
       ? data[0]
       : data;
 
+    if (!isCurrentOperation(operation)) {
+      return false;
+    }
+
     setTransactions((prev) => [
       ...prev,
       mapTransaction(row),
@@ -790,6 +1186,11 @@ export function InventoryProvider({
         transactions,
         outlets,
         inventory,
+        isLoading,
+        loadError,
+        loadOperationalData,
+        clearOperationalData,
+        retryOperationalData,
 
         addProduct,
         updateProduct,
