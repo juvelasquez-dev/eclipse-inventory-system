@@ -7,6 +7,7 @@ export type UserRole = "ADMIN" | "STAFF" | null;
 interface UseUserRoleResult {
   role: UserRole;
   loading: boolean;
+  error: string | null;
 }
 
 /*
@@ -16,6 +17,7 @@ interface UseUserRoleResult {
 export function useUserRole(): UseUserRoleResult {
   const [role, setRole] = useState<UserRole>(null);
   const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -35,10 +37,12 @@ export function useUserRole(): UseUserRoleResult {
           error
         );
         setRole(null);
+        setErrorMessage(error.message);
         setLoading(false);
         return;
       }
 
+      setErrorMessage(null);
       setRole(
         typeof data === "string"
           ? (data as UserRole)
@@ -54,5 +58,5 @@ export function useUserRole(): UseUserRoleResult {
     };
   }, []);
 
-  return { role, loading };
+  return { role, loading, error: errorMessage };
 }

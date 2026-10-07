@@ -8,6 +8,7 @@ export function useUserArea() {
   const [areaCode, setAreaCode] =
     useState<UserAreaCode>(null);
   const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -22,7 +23,9 @@ export function useUserArea() {
       if (error) {
         console.error("Unable to load user area:", error);
         setAreaCode(null);
+        setErrorMessage(error.message);
       } else {
+        setErrorMessage(null);
         setAreaCode(
           data === "IAO" || data === "CBR" || data === "EFT"
             ? data
@@ -40,5 +43,5 @@ export function useUserArea() {
     };
   }, []);
 
-  return { areaCode, loading };
+  return { areaCode, loading, error: errorMessage };
 }

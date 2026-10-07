@@ -132,6 +132,39 @@ export default function Admin() {
               </p>
             </div>
           </button>
+
+          <button
+            type="button"
+            onClick={() => navigate("/admin/security")}
+            className="group relative overflow-hidden rounded-3xl border border-indigo-100 bg-gradient-to-b from-white to-indigo-50/40 p-8 text-left shadow-sm transition-all duration-300 hover:-translate-y-1.5 hover:border-indigo-300 hover:shadow-xl hover:shadow-indigo-900/10"
+          >
+            <ShieldCheck
+              size={140}
+              strokeWidth={1}
+              className="pointer-events-none absolute -bottom-6 -right-6 text-indigo-600/[0.08] transition-transform duration-500 group-hover:scale-110 group-hover:rotate-6"
+            />
+
+            <div className="relative">
+              <div className="flex items-start justify-between">
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-600 text-white shadow-md shadow-indigo-900/20 transition-transform duration-300 group-hover:scale-105 group-hover:-rotate-3">
+                  <ShieldCheck size={26} />
+                </div>
+
+                <ArrowRight
+                  size={20}
+                  className="text-indigo-300 transition-all duration-300 group-hover:translate-x-1 group-hover:text-indigo-600"
+                />
+              </div>
+
+              <h2 className="mt-7 text-xl font-bold tracking-tight text-slate-900">
+                Security &amp; Session Information
+              </h2>
+
+              <p className="mt-2.5 text-sm leading-6 text-slate-500">
+                Review your account details and current browser session information.
+              </p>
+            </div>
+          </button>
         </div>
       </div>
     </div>
