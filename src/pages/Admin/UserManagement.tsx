@@ -62,6 +62,8 @@ type PendingChange =
   | { kind: "status"; username: string; from: string; to: "ACTIVE" | "INACTIVE" }
   | { kind: "area"; username: string; from: string; to: string };
 
+type RowLayout = "table" | "card";
+
 const FILTER_ALL = "ALL";
 
 const ROLE_FILTER_OPTIONS = [{ label: "All roles", value: FILTER_ALL }, ...ROLE_OPTIONS];
@@ -687,6 +689,159 @@ export default function UserManagement() {
     showToast(`Updated ${username}'s status to ${nextStatus}.`, "success");
   }
 
+  /*
+   * Shared row controls. The desktop table and the tablet/phone cards render
+   * the same controls with the same handlers and disabled/title logic; only
+   * the layout classes (and the visible labels in card mode) differ.
+   */
+  function renderRoleSelect(user: AdminUserRow, layout: RowLayout) {
+    const card = layout === "card";
+
+    return (
+      <Select
+        id={card ? `user-role-${user.profileId}` : undefined}
+        label={card ? "Role" : undefined}
+        aria-label={card ? undefined : `Role for ${user.username}`}
+        className={card ? undefined : "min-w-[7rem]"}
+        options={ROLE_OPTIONS}
+        value={user.role}
+        disabled={savingUsername === user.username || isCurrentUser(user)}
+        title={
+          isCurrentUser(user)
+            ? "You cannot change your own role."
+            : undefined
+        }
+        onChange={(event) =>
+          setPendingChange({
+            kind: "role",
+            username: user.username,
+            from: user.role,
+            to: event.target.value as "ADMIN" | "STAFF",
+          })
+        }
+      />
+    );
+  }
+
+  function renderStatusSelect(user: AdminUserRow, layout: RowLayout) {
+    const card = layout === "card";
+
+    return (
+      <Select
+        id={card ? `user-status-${user.profileId}` : undefined}
+        label={card ? "Status" : undefined}
+        aria-label={card ? undefined : `Status for ${user.username}`}
+        className={card ? undefined : "min-w-[8rem]"}
+        options={STATUS_OPTIONS}
+        value={user.status}
+        disabled={savingUsername === user.username || isCurrentUser(user)}
+        title={
+          isCurrentUser(user)
+            ? "You cannot change your own status."
+            : undefined
+        }
+        onChange={(event) =>
+          setPendingChange({
+            kind: "status",
+            username: user.username,
+            from: user.status,
+            to: event.target.value as "ACTIVE" | "INACTIVE",
+          })
+        }
+      />
+    );
+  }
+
+  function renderAreaSelect(user: AdminUserRow, layout: RowLayout) {
+    const card = layout === "card";
+
+    return (
+      <Select
+        id={card ? `user-area-${user.profileId}` : undefined}
+        label={card ? "Assigned Area" : undefined}
+        aria-label={card ? undefined : `Assigned Area for ${user.username}`}
+        className={card ? undefined : "min-w-[8rem]"}
+        options={[
+          {
+            label: user.areaCode ? user.areaCode : "Unassigned",
+            value: "",
+          },
+          ...AREA_OPTIONS,
+        ]}
+        value={user.areaCode ?? ""}
+        disabled={savingUsername === user.username}
+        onChange={(event) => {
+          if (!event.target.value) {
+            return;
+          }
+          setPendingChange({
+            kind: "area",
+            username: user.username,
+            from: user.areaCode ?? "Unassigned",
+            to: event.target.value,
+          });
+        }}
+      />
+    );
+  }
+
+  function renderRowActions(user: AdminUserRow, layout: RowLayout) {
+    const card = layout === "card";
+
+    return (
+      <div
+        className={
+          card
+            ? "grid grid-cols-1 gap-2 sm:grid-cols-2"
+            : "flex min-w-[10.5rem] flex-col gap-2"
+        }
+      >
+        <Button
+          type="button"
+          variant="secondary"
+          className="w-full gap-2 whitespace-nowrap"
+          onClick={() => openUsernameChange(user)}
+          disabled={
+            currentEmail === null ||
+            isCurrentUser(user) ||
+            savingUsernameChange
+          }
+          title={
+            isCurrentUser(user)
+              ? "You cannot change your own username."
+              : currentEmail === null
+                ? "Checking current account..."
+                : `Edit ${user.username}'s username`
+          }
+        >
+          <Pencil size={15} />
+          Edit Username
+        </Button>
+        <Button
+          type="button"
+          variant="secondary"
+          className="w-full gap-2 whitespace-nowrap"
+          onClick={() => openPasswordReset(user)}
+          disabled={
+            currentEmail === null ||
+            isCurrentUser(user) ||
+            resettingPassword
+          }
+          title={
+            isCurrentUser(user)
+              ? "Use Change My Password for your own account."
+              : currentEmail === null
+                ? "Checking current account..."
+                : `Reset ${user.username}'s password`
+          }
+        >
+          <KeyRound size={15} />
+          Reset Password
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <div className="flex min-h-screen flex-col bg-[#FBF9F4]">
       <div className="flex items-center gap-3 border-b border-slate-200/70 bg-white/70 px-6 py-5 backdrop-blur-md sm:px-10">
@@ -700,7 +855,7 @@ export default function UserManagement() {
         </button>
       </div>
 
-      <div className="mx-auto w-full max-w-5xl flex-1 px-4 py-10 sm:px-6">
+      <div className="mx-auto w-full max-w-7xl flex-1 px-4 py-10 sm:px-6">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">
             User Management
@@ -720,7 +875,7 @@ export default function UserManagement() {
         </p>
 
         <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5 lg:items-end">
-          <div className="lg:col-span-2">
+          <div className="sm:col-span-2 lg:col-span-2">
             <Input
               label="Search"
               placeholder="Username or email"
@@ -772,177 +927,103 @@ export default function UserManagement() {
               )}
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse">
-                <thead className="border-b border-slate-200 bg-slate-50/80">
-                  <tr>
-                    <th className="px-6 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Username
-                    </th>
+            <>
+              {/* Desktop (lg and up): table */}
+              <div className="hidden overflow-x-auto lg:block">
+                <table className="w-full border-collapse">
+                  <thead className="border-b border-slate-200 bg-slate-50/80">
+                    <tr>
+                      <th className="px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Username
+                      </th>
 
-                    <th className="px-6 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Email
-                    </th>
+                      <th className="px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Email
+                      </th>
 
-                    <th className="px-6 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Role
-                    </th>
+                      <th className="px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Role
+                      </th>
 
-                    <th className="px-6 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Status
-                    </th>
+                      <th className="px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Status
+                      </th>
 
-                    <th className="px-6 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Assigned Area
-                    </th>
+                      <th className="px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Assigned Area
+                      </th>
 
-                    <th className="px-6 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
+                      <th className="px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
 
-                <tbody className="divide-y divide-slate-100">
-                  {filteredUsers.map((user) => (
-                    <tr
-                      key={user.profileId}
-                      className="transition-colors hover:bg-slate-50"
-                    >
-                      <td className="px-6 py-4 text-sm font-medium text-slate-900">
+                  <tbody className="divide-y divide-slate-100">
+                    {filteredUsers.map((user) => (
+                      <tr
+                        key={user.profileId}
+                        className="transition-colors hover:bg-slate-50"
+                      >
+                        <td className="px-4 py-4 text-sm font-medium text-slate-900">
+                          <div className="max-w-[12rem] truncate" title={user.username}>
+                            {user.username}
+                            {isCurrentUser(user) && (
+                              <span className="ml-2 text-xs font-semibold text-indigo-600">
+                                (You)
+                              </span>
+                            )}
+                          </div>
+                        </td>
+
+                        <td className="px-4 py-4 text-sm text-slate-500">
+                          <div className="max-w-[16rem] truncate" title={user.email}>
+                            {user.email}
+                          </div>
+                        </td>
+
+                        <td className="px-4 py-4">{renderRoleSelect(user, "table")}</td>
+
+                        <td className="px-4 py-4">{renderStatusSelect(user, "table")}</td>
+
+                        <td className="px-4 py-4">{renderAreaSelect(user, "table")}</td>
+
+                        <td className="px-4 py-4">{renderRowActions(user, "table")}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Tablet and phone (below lg): one card per user */}
+              <ul className="divide-y divide-slate-100 lg:hidden">
+                {filteredUsers.map((user) => (
+                  <li key={user.profileId} className="space-y-4 p-4 sm:p-5">
+                    <div className="min-w-0">
+                      <p className="break-all text-sm font-semibold text-slate-900">
                         {user.username}
                         {isCurrentUser(user) && (
                           <span className="ml-2 text-xs font-semibold text-indigo-600">
                             (You)
                           </span>
                         )}
-                      </td>
-
-                      <td className="px-6 py-4 text-sm text-slate-500">
+                      </p>
+                      <p className="mt-0.5 break-all text-sm text-slate-500">
                         {user.email}
-                      </td>
+                      </p>
+                    </div>
 
-                      <td className="px-6 py-4">
-                        <Select
-                          options={ROLE_OPTIONS}
-                          value={user.role}
-                          disabled={
-                            savingUsername === user.username || isCurrentUser(user)
-                          }
-                          title={
-                            isCurrentUser(user)
-                              ? "You cannot change your own role."
-                              : undefined
-                          }
-                          onChange={(event) =>
-                            setPendingChange({
-                              kind: "role",
-                              username: user.username,
-                              from: user.role,
-                              to: event.target.value as "ADMIN" | "STAFF",
-                            })
-                          }
-                        />
-                      </td>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      {renderRoleSelect(user, "card")}
+                      {renderStatusSelect(user, "card")}
+                      {renderAreaSelect(user, "card")}
+                    </div>
 
-                      <td className="px-6 py-4">
-                        <Select
-                          options={STATUS_OPTIONS}
-                          value={user.status}
-                          disabled={
-                            savingUsername === user.username || isCurrentUser(user)
-                          }
-                          title={
-                            isCurrentUser(user)
-                              ? "You cannot change your own status."
-                              : undefined
-                          }
-                          onChange={(event) =>
-                            setPendingChange({
-                              kind: "status",
-                              username: user.username,
-                              from: user.status,
-                              to: event.target.value as "ACTIVE" | "INACTIVE",
-                            })
-                          }
-                        />
-                      </td>
-
-                      <td className="px-6 py-4">
-                        <Select
-                          options={[
-                            {
-                              label: user.areaCode ? user.areaCode : "Unassigned",
-                              value: "",
-                            },
-                            ...AREA_OPTIONS,
-                          ]}
-                          value={user.areaCode ?? ""}
-                          disabled={savingUsername === user.username}
-                          onChange={(event) => {
-                            if (!event.target.value) {
-                              return;
-                            }
-                            setPendingChange({
-                              kind: "area",
-                              username: user.username,
-                              from: user.areaCode ?? "Unassigned",
-                              to: event.target.value,
-                            });
-                          }}
-                        />
-                      </td>
-
-                      <td className="px-6 py-4">
-                        <div className="flex flex-wrap gap-2">
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            className="gap-2 whitespace-nowrap"
-                            onClick={() => openUsernameChange(user)}
-                            disabled={
-                              currentEmail === null ||
-                              isCurrentUser(user) ||
-                              savingUsernameChange
-                            }
-                            title={
-                              isCurrentUser(user)
-                                ? "You cannot change your own username."
-                                : currentEmail === null
-                                  ? "Checking current account..."
-                                  : `Edit ${user.username}'s username`
-                            }
-                          >
-                            <Pencil size={15} />
-                            Edit Username
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            className="gap-2 whitespace-nowrap"
-                            onClick={() => openPasswordReset(user)}
-                            disabled={
-                              currentEmail === null ||
-                              isCurrentUser(user) ||
-                              resettingPassword
-                            }
-                            title={
-                              isCurrentUser(user)
-                                ? "Use Change My Password for your own account."
-                                : currentEmail === null
-                                  ? "Checking current account..."
-                                  : `Reset ${user.username}'s password`
-                            }
-                          >
-                            <KeyRound size={15} />
-                            Reset Password
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                    {renderRowActions(user, "card")}
+                  </li>
+                ))}
+              </ul>
+            </>
           )}
         </div>
 
