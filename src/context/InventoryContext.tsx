@@ -16,6 +16,7 @@ import type {
 } from "../types/inventory";
 
 import { getInventory } from "../utils/inventory";
+import { isSameOutletNameAndAddress } from "../utils/outlets";
 import { supabase } from "../lib/supabase";
 
 interface InventoryContextType {
@@ -186,29 +187,6 @@ function mapOutlet(row: any): Outlet {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
-}
-
-function isDuplicateOutlet(
-  existingOutlet: Outlet,
-  candidate: {
-    outletName: string;
-    completeAddress: string;
-  }
-) {
-  return (
-    existingOutlet.outletName
-      .trim()
-      .toLowerCase() ===
-      candidate.outletName
-        .trim()
-        .toLowerCase() &&
-    existingOutlet.completeAddress
-      .trim()
-      .toLowerCase() ===
-      candidate.completeAddress
-        .trim()
-        .toLowerCase()
-  );
 }
 
 function getDuplicateOutletMessage() {
@@ -841,14 +819,9 @@ export function InventoryProvider({
       return { success: false };
     }
 
-    const duplicateExists =
-      outlets.some((existingOutlet) =>
-        isDuplicateOutlet(existingOutlet, {
-          outletName: outlet.outletName,
-          completeAddress:
-            outlet.completeAddress,
-        })
-      );
+    const duplicateExists = outlets.some((existingOutlet) =>
+      isSameOutletNameAndAddress(existingOutlet, outlet)
+    );
 
     if (duplicateExists) {
       return {
@@ -951,17 +924,11 @@ export function InventoryProvider({
       return { success: false };
     }
 
-    const duplicateExists =
-      outlets.some(
-        (outlet) =>
-          outlet.id !== updatedOutlet.id &&
-          isDuplicateOutlet(outlet, {
-            outletName:
-              updatedOutlet.outletName,
-            completeAddress:
-              updatedOutlet.completeAddress,
-          })
-      );
+    const duplicateExists = outlets.some(
+      (outlet) =>
+        outlet.id !== updatedOutlet.id &&
+        isSameOutletNameAndAddress(outlet, updatedOutlet)
+    );
 
     if (duplicateExists) {
       return {
