@@ -1,5 +1,7 @@
 import * as XLSX from "xlsx";
 
+import { todayBusinessKey } from "./businessDate";
+
 import type {
   Outlet,
   OutletStatus,
@@ -490,7 +492,7 @@ export function exportMissingDegicOutlets(outlets: Outlet[]) {
   const workbook = XLSX.utils.book_new();
   const worksheet = createOutletWorksheet(rows);
   XLSX.utils.book_append_sheet(workbook, worksheet, "Missing DEGIC");
-  XLSX.writeFile(workbook, `outlets-missing-degic-${new Date().toISOString().slice(0, 10)}.xlsx`);
+  XLSX.writeFile(workbook, `outlets-missing-degic-${todayBusinessKey()}.xlsx`);
 }
 
 export function downloadFailedOutletUpdates(
@@ -514,7 +516,7 @@ export function downloadFailedOutletUpdates(
   }));
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(workbookRows), "Failed Updates");
-  XLSX.writeFile(workbook, `outlet-update-failures-${new Date().toISOString().slice(0, 10)}.xlsx`);
+  XLSX.writeFile(workbook, `outlet-update-failures-${todayBusinessKey()}.xlsx`);
 }
 
 export function validateOutletImportRows(
@@ -664,7 +666,7 @@ export function downloadFailedOutletImports(
 ) {
   XLSX.writeFile(
     exportFailedOutletImportsWorkbook(rows),
-    `outlet-import-failures-${new Date().toISOString().slice(0, 10)}.xlsx`
+    `outlet-import-failures-${todayBusinessKey()}.xlsx`
   );
 }
 
@@ -753,7 +755,7 @@ export async function importValidatedOutletRows(
 export function exportOutletsExcel(outlets: Outlet[]) {
   XLSX.writeFile(
     exportOutletsWorkbook(outlets),
-    `outlets-${new Date().toISOString().slice(0, 10)}.xlsx`
+    `outlets-${todayBusinessKey()}.xlsx`
   );
 }
 
@@ -916,9 +918,7 @@ export function exportOutletReportExcel(
 
   XLSX.writeFile(
     workbook,
-    `outlet-report-${new Date()
-      .toISOString()
-      .slice(0, 10)}.xlsx`
+    `outlet-report-${todayBusinessKey()}.xlsx`
   );
 }
 

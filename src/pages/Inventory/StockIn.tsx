@@ -11,6 +11,10 @@ import StockTable from "../../components/inventory/StockTable";
 import TransactionForm from "../../components/inventory/TransactionForm";
 
 import { useInventory } from "../../hooks/useInventory";
+import {
+  calendarDateToBusinessKey,
+  combineBusinessDateAndTime,
+} from "../../utils/businessDate";
 import { useToast } from "../../context/ToastContext";
 import { categories } from "../../mock/categories";
 
@@ -258,23 +262,16 @@ export default function StockIn() {
        * confirmation time.
        */
       if (row.date) {
-        const excelDate =
-          new Date(row.date);
+        const dateKey =
+          calendarDateToBusinessKey(
+            row.date
+          );
 
-        if (
-          !Number.isNaN(
-            excelDate.getTime()
-          )
-        ) {
+        if (dateKey) {
           transactionDate =
-            new Date(
-              excelDate.getFullYear(),
-              excelDate.getMonth(),
-              excelDate.getDate(),
-              importTimestamp.getHours(),
-              importTimestamp.getMinutes(),
-              importTimestamp.getSeconds(),
-              importTimestamp.getMilliseconds()
+            combineBusinessDateAndTime(
+              dateKey,
+              importTimestamp
             );
         }
       }

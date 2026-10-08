@@ -1,5 +1,7 @@
 import * as XLSX from "xlsx";
 
+import { todayBusinessKey } from "./businessDate";
+
 export interface ExcelStockRow {
   rowNumber: number;
   productCode: string;
@@ -330,10 +332,7 @@ export function exportStockTemplate(
       ? "stock-in-template"
       : "stock-out-template";
 
-  const date =
-    new Date()
-      .toISOString()
-      .split("T")[0];
+  const date = todayBusinessKey();
 
   XLSX.writeFile(
     workbook,
@@ -544,10 +543,7 @@ export function exportInventoryToExcel(
    * =======================================================
    */
 
-  const date =
-    new Date()
-      .toISOString()
-      .split("T")[0];
+  const date = todayBusinessKey();
 
   XLSX.writeFile(
     workbook,

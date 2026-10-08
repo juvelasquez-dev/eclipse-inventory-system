@@ -13,6 +13,7 @@ import {
 } from "recharts";
 
 import { useInventory } from "../../hooks/useInventory";
+import { toBusinessDateKey } from "../../utils/businessDate";
 import {
   getCancelledOutQuantities,
   getNetOutQuantity,
@@ -95,7 +96,7 @@ export default function Dashboard() {
       }
 
       const dateKey =
-        parsedDate.toISOString().split("T")[0];
+        toBusinessDateKey(parsedDate);
 
       if (!movement[dateKey]) {
         movement[dateKey] = {

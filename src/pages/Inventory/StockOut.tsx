@@ -11,6 +11,10 @@ import StockTable from "../../components/inventory/StockTable";
 import TransactionForm from "../../components/inventory/TransactionForm";
 
 import { useInventory } from "../../hooks/useInventory";
+import {
+  calendarDateToBusinessKey,
+  combineBusinessDateAndTime,
+} from "../../utils/businessDate";
 import { useToast } from "../../context/ToastContext";
 import { categories } from "../../mock/categories";
 
@@ -260,11 +264,6 @@ export default function StockOut() {
      */
     const importNow = new Date();
 
-    const importTime =
-      importNow
-        .toTimeString()
-        .slice(0, 8);
-
     let successCount = 0;
     const failedRows: {
       rowNumber: number;
@@ -300,18 +299,17 @@ export default function StockOut() {
        * SAME import time for every row.
        */
       if (row.date) {
-        const parsedDate =
-          new Date(
-            `${row.date}T${importTime}`
+        const dateKey =
+          calendarDateToBusinessKey(
+            row.date
           );
 
-        if (
-          !Number.isNaN(
-            parsedDate.getTime()
-          )
-        ) {
+        if (dateKey) {
           transactionDate =
-            parsedDate;
+            combineBusinessDateAndTime(
+              dateKey,
+              importNow
+            );
         }
       }
 

@@ -11,6 +11,13 @@ import DeliveryReceiptPrint, {
 import { useInventoryContext } from "../../context/InventoryContext";
 import { useToast } from "../../context/ToastContext";
 import { supabase } from "../../lib/supabase";
+import {
+  addBusinessDays,
+  businessMonthStartKey,
+  businessWeekStartKey,
+  todayBusinessKey,
+  toBusinessDateKey,
+} from "../../utils/businessDate";
 
 interface POSHistoryRow extends ReceiptData {
   id: string;
@@ -100,30 +107,6 @@ function formatPaymentMethod(method: string) {
  * =========================================================
  */
 
-function startOfDay(date: Date) {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
-function addDays(date: Date, days: number) {
-  const d = new Date(date);
-  d.setDate(d.getDate() + days);
-  return d;
-}
-
-function startOfWeek(date: Date) {
-  const d = startOfDay(date);
-  d.setDate(d.getDate() - d.getDay());
-  return d;
-}
-
-function startOfMonth(date: Date) {
-  const d = startOfDay(date);
-  d.setDate(1);
-  return d;
-}
-
 function matchesDateFilter(
   createdAt: string,
   dateFilter: string,
@@ -134,27 +117,24 @@ function matchesDateFilter(
     return true;
   }
 
-  const txDate = new Date(createdAt);
-  const now = new Date();
+  // Compare Asia/Manila calendar dates (YYYY-MM-DD keys sort chronologically).
+  const txKey = toBusinessDateKey(createdAt);
+  const todayKey = todayBusinessKey();
 
   if (dateFilter === "TODAY") {
-    const start = startOfDay(now);
-    const end = addDays(start, 1);
-    return txDate >= start && txDate < end;
+    return txKey === todayKey;
   }
 
   if (dateFilter === "YESTERDAY") {
-    const start = addDays(startOfDay(now), -1);
-    const end = startOfDay(now);
-    return txDate >= start && txDate < end;
+    return txKey === addBusinessDays(todayKey, -1);
   }
 
   if (dateFilter === "THIS_WEEK") {
-    return txDate >= startOfWeek(now);
+    return txKey >= businessWeekStartKey(todayKey);
   }
 
   if (dateFilter === "THIS_MONTH") {
-    return txDate >= startOfMonth(now);
+    return txKey >= businessMonthStartKey(todayKey);
   }
 
   if (dateFilter === "CUSTOM") {
@@ -162,15 +142,9 @@ function matchesDateFilter(
       return true;
     }
 
-    if (customStart) {
-      const start = startOfDay(new Date(customStart));
-      if (txDate < start) return false;
-    }
+    if (customStart && txKey < customStart) return false;
 
-    if (customEnd) {
-      const end = addDays(startOfDay(new Date(customEnd)), 1);
-      if (txDate >= end) return false;
-    }
+    if (customEnd && txKey > customEnd) return false;
 
     return true;
   }

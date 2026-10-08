@@ -1,4 +1,5 @@
 import { useInventoryContext } from "../context/InventoryContext";
+import { toBusinessDateKey, todayBusinessKey } from "../utils/businessDate";
 import {
   getCancelledOutQuantities,
   getNetOutQuantity,
@@ -23,9 +24,7 @@ export function useInventory() {
   /*
    * Today's date
    */
-  const today = new Date()
-    .toISOString()
-    .split("T")[0];
+  const today = todayBusinessKey();
 
   /*
    * Stock In today
@@ -38,9 +37,7 @@ export function useInventory() {
         }
 
         const transactionDate =
-          new Date(transaction.date)
-            .toISOString()
-            .split("T")[0];
+          toBusinessDateKey(transaction.date);
 
         return transactionDate === today;
       })
@@ -66,9 +63,7 @@ export function useInventory() {
         }
 
         const transactionDate =
-          new Date(transaction.date)
-            .toISOString()
-            .split("T")[0];
+          toBusinessDateKey(transaction.date);
 
         return transactionDate === today;
       })
