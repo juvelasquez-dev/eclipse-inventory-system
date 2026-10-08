@@ -19,11 +19,10 @@ export default function Modal({
   if (!open) return null;
 
   const panelClass = wide
-    ? "my-4 flex max-h-[calc(100vh-4rem)] w-[92vw] max-w-7xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl shadow-slate-900/20 ring-1 ring-slate-900/5"
+    ? "my-4 w-[calc(100vw-2rem)] max-w-[960px] overflow-hidden rounded-2xl bg-white shadow-2xl shadow-slate-900/20 ring-1 ring-slate-900/5 sm:my-8 2xl:max-w-[1100px]"
     : "my-4 w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl shadow-slate-900/20 ring-1 ring-slate-900/5 sm:my-8";
-  const bodyClass = wide
-    ? "flex min-h-0 flex-1 flex-col overflow-hidden px-4 py-4 sm:px-6 sm:py-5"
-    : "max-h-[calc(100vh-8rem)] overflow-y-auto px-4 py-4 sm:px-6 sm:py-5";
+  const bodyClass =
+    "max-h-[calc(100vh-8rem)] overflow-y-auto px-4 py-4 sm:px-6 sm:py-5";
 
   return (
     <div

@@ -17,6 +17,7 @@ import { categories } from "../../mock/categories";
 import {
   readStockExcel,
   validateStockRows,
+  exportStockTemplate,
   type ExcelValidationResult,
 } from "../../utils/excel";
 
@@ -159,6 +160,13 @@ export default function StockIn() {
     } finally {
       setImportLoading(false);
     }
+  }
+
+  function handleDownloadTemplate() {
+    exportStockTemplate(
+      products,
+      "IN"
+    );
   }
 
   function handleFileChange(
@@ -353,6 +361,13 @@ export default function StockIn() {
             </div>
 
             <div className="flex flex-col gap-2 sm:flex-row">
+
+              <Button
+                variant="secondary"
+                onClick={handleDownloadTemplate}
+              >
+                Download Stock In Template
+              </Button>
 
               <Button
                 onClick={() =>

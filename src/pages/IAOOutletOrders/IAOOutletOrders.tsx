@@ -451,7 +451,12 @@ export default function IAOOutletOrders() {
         {receipt && <div className="flex justify-end"><Button type="button" variant="secondary" onClick={() => window.print()}><Printer size={16} /> Print last receipt</Button></div>}
       </div>
 
-      <Modal open={showCopyModal} title={selectedPos ? "Review copied items" : "Copy from Eclipse POS"} onClose={closeCopyModal}>
+      <Modal
+        open={showCopyModal}
+        title={selectedPos ? "Review copied items" : "Copy from Eclipse POS"}
+        onClose={closeCopyModal}
+        wide={Boolean(selectedPos)}
+      >
         {!selectedPos ? (
           <div className="space-y-4">
             <Input label="Search by outlet or receipt" value={copySearch} onChange={(event) => setCopySearch(event.target.value)} placeholder="Outlet name, address, or receipt" />
@@ -496,9 +501,16 @@ export default function IAOOutletOrders() {
               <p className="py-6 text-center text-sm text-slate-500">Loading items...</p>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[560px] text-sm">
+                <table className="w-full min-w-[640px] table-fixed text-sm">
+                  <colgroup>
+                    <col className="w-[34%]" />
+                    <col className="w-[10%]" />
+                    <col className="w-[18%]" />
+                    <col className="w-[20%]" />
+                    <col className="w-[18%]" />
+                  </colgroup>
                   <thead className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
-                    <tr><th className="pb-2">Product</th><th className="pb-2 text-center">Qty</th><th className="pb-2 text-right">Eclipse reference</th><th className="pb-2 text-right">IAO selling price</th><th className="pb-2 text-right">Line total</th></tr>
+                    <tr><th className="py-2 pr-3">Product</th><th className="py-2 px-3 text-center">Qty</th><th className="py-2 px-3 text-right">Eclipse reference</th><th className="py-2 px-3 text-right">IAO selling price</th><th className="py-2 pl-3 text-right">Line total</th></tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {previewItems.map((item) => {
@@ -506,10 +518,10 @@ export default function IAOOutletOrders() {
                       const lineTotal = Number.isFinite(sellingPrice) ? sellingPrice * item.quantity : 0;
                       return (
                         <tr key={item.productId}>
-                          <td className="py-2"><p className="font-medium text-slate-900">{item.productName}</p><p className="text-xs text-slate-500">{item.productCode} · {item.unit}</p></td>
-                          <td className="py-2 text-center">{item.quantity}</td>
-                          <td className="py-2 text-right text-slate-500">{formatPrice(item.eclipseReferenceUnitPrice)}</td>
-                          <td className="py-2 text-right">
+                          <td className="py-3 pr-3"><p className="font-medium text-slate-900">{item.productName}</p><p className="text-xs text-slate-500">{item.productCode} · {item.unit}</p></td>
+                          <td className="py-3 px-3 text-center">{item.quantity}</td>
+                          <td className="py-3 px-3 text-right text-slate-500">{formatPrice(item.eclipseReferenceUnitPrice)}</td>
+                          <td className="py-3 px-3 text-right">
                             <input
                               aria-label={`IAO selling price for ${item.productName}`}
                               type="number"
@@ -517,10 +529,10 @@ export default function IAOOutletOrders() {
                               step="0.01"
                               value={item.sellingPrice}
                               onChange={(event) => updatePreviewPrice(item.productId, event.target.value)}
-                              className="w-28 rounded-lg border border-slate-300 px-2 py-1.5 text-right"
+                              className="w-full max-w-36 rounded-lg border border-slate-300 px-2.5 py-1.5 text-right"
                             />
                           </td>
-                          <td className="py-2 text-right font-semibold text-slate-900">{formatPrice(lineTotal)}</td>
+                          <td className="py-3 pl-3 text-right font-semibold text-slate-900">{formatPrice(lineTotal)}</td>
                         </tr>
                       );
                     })}

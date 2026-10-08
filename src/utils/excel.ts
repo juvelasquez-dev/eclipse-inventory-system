@@ -256,6 +256,93 @@ export function validateStockRows(
 
 /*
  * =========================================================
+ * STOCK IN / STOCK OUT TEMPLATE EXPORT
+ * =========================================================
+ *
+ * Stock In and Stock Out both read files through
+ * readStockExcel() / validateStockRows() above, which only
+ * recognize "Product Code", "Quantity", "Date", and
+ * "Remarks" columns, and match products by Product Code
+ * (case-insensitive). Because the two importers share the
+ * exact same column format, a single template generator is
+ * reused for both flows instead of duplicating the logic.
+ *
+ * Product Name is included only as a human-readable
+ * reference next to the code; the importer ignores it and
+ * still matches products by Product Code.
+ *
+ * The current Product model (src/types/inventory.ts) has
+ * no "description" field, so no Description column is
+ * generated here.
+ */
+
+export interface StockTemplateProduct {
+  code: string;
+  name: string;
+}
+
+export function exportStockTemplate(
+  products: StockTemplateProduct[],
+  mode: "IN" | "OUT"
+) {
+  const templateRows = products.map(
+    (product) => ({
+      "Product Code":
+        product.code,
+
+      "Product Name":
+        product.name,
+
+      Quantity: "",
+
+      Remarks: "",
+    })
+  );
+
+  const sheetName =
+    mode === "IN"
+      ? "Stock In Template"
+      : "Stock Out Template";
+
+  const sheet =
+    XLSX.utils.json_to_sheet(
+      templateRows
+    );
+
+  sheet["!cols"] = [
+    { wch: 16 },
+    { wch: 32 },
+    { wch: 12 },
+    { wch: 30 },
+  ];
+
+  const workbook =
+    XLSX.utils.book_new();
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    sheet,
+    sheetName
+  );
+
+  const fileLabel =
+    mode === "IN"
+      ? "stock-in-template"
+      : "stock-out-template";
+
+  const date =
+    new Date()
+      .toISOString()
+      .split("T")[0];
+
+  XLSX.writeFile(
+    workbook,
+    `${fileLabel}-${date}.xlsx`
+  );
+}
+
+/*
+ * =========================================================
  * EXPORT INVENTORY TO EXCEL
  * =========================================================
  */

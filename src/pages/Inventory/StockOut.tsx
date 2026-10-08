@@ -17,6 +17,7 @@ import { categories } from "../../mock/categories";
 import {
   readStockExcel,
   validateStockRows,
+  exportStockTemplate,
   type ExcelValidationResult,
 } from "../../utils/excel";
 
@@ -146,6 +147,13 @@ export default function StockOut() {
 
   function handleImportClick() {
     fileInputRef.current?.click();
+  }
+
+  function handleDownloadTemplate() {
+    exportStockTemplate(
+      products,
+      "OUT"
+    );
   }
 
   /*
@@ -481,6 +489,15 @@ export default function StockOut() {
                   handleExcelChange
                 }
               />
+
+              <Button
+                variant="secondary"
+                onClick={
+                  handleDownloadTemplate
+                }
+              >
+                Download Stock Out Template
+              </Button>
 
               <Button
                 onClick={
