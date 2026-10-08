@@ -71,10 +71,82 @@ function normalizeAreaCode(value: unknown): string {
   return normalizeText(value).toUpperCase();
 }
 
-function normalizeOutletKey(value: string): string {
-  return value.trim().toLowerCase();
+export function normalizeOutletText(value: unknown): string {
+  return String(value ?? "")
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
 }
 
+export function normalizeOutletAddress(value: unknown): string {
+  const tokens = normalizeOutletText(value)
+    .split(" ")
+    .flatMap((token) => {
+      const attached = token.match(/^(blk|bk|bl|lt|ph|prk|l|p)(\d+[a-z]?)$/);
+      return attached ? [attached[1], attached[2]] : [token];
+    });
+
+  return tokens
+    .map((token, index) => {
+      // Single letters are only abbreviations when directly followed by a number.
+      if (NUMBER_ONLY_ABBREVIATIONS[token]) {
+        return /^\d/.test(tokens[index + 1] ?? "")
+          ? NUMBER_ONLY_ABBREVIATIONS[token]
+          : token;
+      }
+      return ADDRESS_ABBREVIATIONS[token] ?? token;
+    })
+    .join(" ");
+}
+
+const ADDRESS_ABBREVIATIONS: Record<string, string> = {
+  blk: "block",
+  bk: "block",
+  bl: "block",
+  lt: "lot",
+  ph: "phase",
+  prk: "purok",
+  brgy: "barangay",
+};
+
+const NUMBER_ONLY_ABBREVIATIONS: Record<string, string> = {
+  l: "lot",
+  p: "phase",
+};
+export interface OutletIdentity {
+  outletName: string;
+  completeAddress: string;
+}
+
+export function isSameOutletNameAndAddress(
+  a: Pick<OutletIdentity, "outletName" | "completeAddress">,
+  b: Pick<OutletIdentity, "outletName" | "completeAddress">
+): boolean {
+  const name = normalizeOutletText(a.outletName);
+  const address = normalizeOutletText(a.completeAddress);
+  return (
+    name !== "" &&
+    address !== "" &&
+    name === normalizeOutletText(b.outletName) &&
+    address === normalizeOutletText(b.completeAddress)
+  );
+}
+
+export const DUPLICATE_ADDRESS_MESSAGE =
+  "Duplicate address: this outlet address matches an existing outlet.";
+
+export function hasDuplicateOutletAddress(
+  completeAddress: string,
+  knownAddresses: Iterable<string>
+): boolean {
+  const address = normalizeOutletAddress(completeAddress);
+  if (!address) return false;
+  for (const known of knownAddresses) {
+    if (normalizeOutletAddress(known) === address) return true;
+  }
+  return false;
+}
 function createOutletWorksheet(rows: Record<string, unknown>[]) {
   const worksheet = XLSX.utils.json_to_sheet(rows);
   worksheet["!cols"] = [{ hidden: true }];
@@ -287,7 +359,7 @@ export function validateOutletUpdateRows(
   rows: OutletUpdateImportRow[],
   existingOutlets: Outlet[]
 ): OutletUpdateValidationResult[] {
-  const seenKeys = new Set<string>();
+  const seenIdentities: Pick<OutletIdentity, "outletName" | "completeAddress">[] = [];
   const seenIds = new Set<string>();
 
   return rows.map((row) => {
@@ -344,21 +416,16 @@ export function validateOutletUpdateRows(
     const identificationError = validateOutletIdentification({ tin, idType, idNumber });
     if (identificationError) errors.push(identificationError);
 
-    const duplicateKey = outletName && completeAddress
-      ? `${normalizeOutletKey(outletName)}|${normalizeOutletKey(completeAddress)}`
-      : "";
-    const duplicateExists = duplicateKey !== "" && (
+    const candidateIdentity = { outletName, completeAddress };
+    const duplicateExists =
       existingOutlets.some((outlet) =>
-        outlet.id !== outletId &&
-        normalizeOutletKey(outlet.outletName) === normalizeOutletKey(outletName) &&
-        normalizeOutletKey(outlet.completeAddress) === normalizeOutletKey(completeAddress)
-      ) || seenKeys.has(duplicateKey)
-    );
+        outlet.id !== outletId && isSameOutletNameAndAddress(outlet, candidateIdentity)
+      ) || seenIdentities.some((seen) => isSameOutletNameAndAddress(seen, candidateIdentity));
 
     if (duplicateExists) {
       errors.push("Duplicate Outlet Name + Address.");
     }
-    if (duplicateKey) seenKeys.add(duplicateKey);
+    seenIdentities.push(candidateIdentity);
 
     const changedFields: string[] = [];
     const fieldComparisons: [string, string | undefined, string | undefined][] = [
@@ -454,7 +521,7 @@ export function validateOutletImportRows(
   rows: OutletImportRow[],
   existingOutlets: Outlet[]
 ): OutletImportValidationResult[] {
-  const seenKeys = new Set<string>();
+  const seenAddresses: string[] = [];
 
   return rows.map((row) => {
     const errors: string[] = [];
@@ -532,44 +599,16 @@ export function validateOutletImportRows(
         ? "Inactive"
         : "Active";
 
-    const duplicateKey =
-      outletName && completeAddress
-        ? `${normalizeOutletKey(
-            outletName
-          )}|${normalizeOutletKey(
-            completeAddress
-          )}`
-        : "";
-
-    const duplicateExists =
-      duplicateKey !== "" &&
-      (existingOutlets.some(
-        (outlet) =>
-          normalizeOutletKey(
-            outlet.outletName
-          ) ===
-            normalizeOutletKey(
-              outletName
-            ) &&
-          normalizeOutletKey(
-            outlet.completeAddress
-          ) ===
-            normalizeOutletKey(
-              completeAddress
-            )
-      ) ||
-        seenKeys.has(duplicateKey));
+    const duplicateExists = hasDuplicateOutletAddress(completeAddress, [
+      ...existingOutlets.map((outlet) => outlet.completeAddress),
+      ...seenAddresses,
+    ]);
 
     if (duplicateExists) {
-      errors.push(
-        "Duplicate outlet detected using the same Outlet Name and Complete Address."
-      );
+      errors.push(DUPLICATE_ADDRESS_MESSAGE);
     }
 
-    if (duplicateKey) {
-      seenKeys.add(duplicateKey);
-    }
-
+    seenAddresses.push(completeAddress);
     return {
       rowNumber: row.rowNumber,
       originalData: row.originalData,
