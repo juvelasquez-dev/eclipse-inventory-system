@@ -18,6 +18,10 @@ export interface ReceiptData {
   items: ReceiptItem[];
   subtotal: number;
   changeAmount: number;
+  transactionStatus?: string;
+  cancelledAt?: string | null;
+  cancelledByUsername?: string | null;
+  cancellationReason?: string | null;
 }
 
 interface DeliveryReceiptPrintProps {
@@ -38,8 +42,17 @@ export default function DeliveryReceiptPrint({
     return null;
   }
 
+  const isCancelled = receipt.transactionStatus === "CANCELLED";
+
   return createPortal(
     <div className="dr-receipt">
+      {isCancelled && (
+        <div className="dr-cancel-banner">
+          <p className="dr-cancel-banner-title">CANCELLED</p>
+          <p className="dr-cancel-banner-sub">NOT A VALID SALE</p>
+        </div>
+      )}
+
       <div className="dr-header">
         <p className="dr-brand">ECLIPSE</p>
         <p className="dr-company">Eclipse Food Trading OPC</p>
@@ -58,6 +71,37 @@ export default function DeliveryReceiptPrint({
       </div>
 
       <div className="dr-divider" />
+
+      {isCancelled && (
+        <>
+          <div className="dr-info dr-cancel-info">
+            {receipt.cancelledAt && (
+              <div className="dr-info-row">
+                <span>Cancelled At</span>
+                <strong>
+                  {new Date(receipt.cancelledAt).toLocaleString("en-PH")}
+                </strong>
+              </div>
+            )}
+            {receipt.cancelledByUsername && (
+              <div className="dr-info-row">
+                <span>Cancelled By</span>
+                <strong>{receipt.cancelledByUsername}</strong>
+              </div>
+            )}
+            {receipt.cancellationReason && (
+              <div className="dr-info-row">
+                <span>Reason</span>
+                <strong className="dr-wrap">
+                  {receipt.cancellationReason}
+                </strong>
+              </div>
+            )}
+          </div>
+
+          <div className="dr-divider" />
+        </>
+      )}
 
       <div className="dr-info">
         <div className="dr-info-row">
@@ -175,6 +219,13 @@ export default function DeliveryReceiptPrint({
           {receipt.deliveryReceiptNumber}
         </p>
       </div>
+
+      {isCancelled && (
+        <div className="dr-cancel-footer">
+          <p>*** CANCELLED ***</p>
+          <p>NOT VALID</p>
+        </div>
+      )}
     </div>,
     document.body
   );

@@ -213,7 +213,7 @@ export default function POSHistory() {
   const [selectedTransaction, setSelectedTransaction] =
     useState<POSHistoryRow | null>(null);
   const [receipt, setReceipt] =
-    useState<ReceiptData | null>(null);
+    useState<POSHistoryRow | null>(null);
   const [printRequested, setPrintRequested] =
     useState(false);
   const [cancellationTarget, setCancellationTarget] =
