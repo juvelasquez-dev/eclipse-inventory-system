@@ -13,6 +13,10 @@ import {
 } from "recharts";
 
 import { useInventory } from "../../hooks/useInventory";
+import {
+  getCancelledOutQuantities,
+  getNetOutQuantity,
+} from "../../utils/inventoryReversals";
 
 const TRANSACTIONS_PER_PAGE = 5;
 
@@ -53,7 +57,9 @@ export default function Dashboard() {
    *
    * IN          = stock received
    * OUT         = stock released
-   * ADJUSTMENT  = excluded from movement
+   * ADJUSTMENT  = excluded from movement, except matched
+   *               POS cancellations, which reduce the original
+   *               sale's Stock Out (net of cancelled sales)
    */
   const stockMovement = useMemo(() => {
     const movement: Record<
@@ -64,6 +70,9 @@ export default function Dashboard() {
         stockOut: number;
       }
     > = {};
+
+    const cancelledOut =
+      getCancelledOutQuantities(transactions);
 
     transactions.forEach((transaction) => {
       if (
@@ -103,7 +112,10 @@ export default function Dashboard() {
 
       if (transaction.type === "OUT") {
         movement[dateKey].stockOut +=
-          transaction.quantity;
+          getNetOutQuantity(
+            transaction,
+            cancelledOut
+          );
       }
     });
 
@@ -182,6 +194,9 @@ export default function Dashboard() {
       number
     > = {};
 
+    const cancelledOut =
+      getCancelledOutQuantities(transactions);
+
     transactions
       .filter(
         (transaction) =>
@@ -191,7 +206,10 @@ export default function Dashboard() {
         totals[transaction.productId] =
           (totals[transaction.productId] ??
             0) +
-          transaction.quantity;
+          getNetOutQuantity(
+            transaction,
+            cancelledOut
+          );
       });
 
     return products

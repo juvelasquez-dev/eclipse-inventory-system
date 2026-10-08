@@ -1,4 +1,8 @@
 import { useInventoryContext } from "../context/InventoryContext";
+import {
+  getCancelledOutQuantities,
+  getNetOutQuantity,
+} from "../utils/inventoryReversals";
 
 export function useInventory() {
   const context = useInventoryContext();
@@ -47,8 +51,13 @@ export function useInventory() {
       );
 
   /*
-   * Stock Out today
+   * Stock Out today (net of cancelled POS sales)
    */
+  const cancelledOutQuantities =
+    getCancelledOutQuantities(
+      context.transactions
+    );
+
   const stockOutToday =
     context.transactions
       .filter((transaction) => {
@@ -65,7 +74,11 @@ export function useInventory() {
       })
       .reduce(
         (sum, transaction) =>
-          sum + transaction.quantity,
+          sum +
+          getNetOutQuantity(
+            transaction,
+            cancelledOutQuantities
+          ),
         0
       );
 
@@ -134,12 +147,19 @@ export function useInventory() {
   function getProductMovement(
     productId: string
   ) {
-    return context.transactions
-      .filter(
+    const productTransactions =
+      context.transactions.filter(
         (transaction) =>
           transaction.productId ===
           productId
-      )
+      );
+
+    const cancelled =
+      getCancelledOutQuantities(
+        productTransactions
+      );
+
+    return productTransactions
       .reduce(
         (movement, transaction) => {
           if (
@@ -153,7 +173,10 @@ export function useInventory() {
             transaction.type === "OUT"
           ) {
             movement.stockOut +=
-              transaction.quantity;
+              getNetOutQuantity(
+                transaction,
+                cancelled
+              );
           }
 
           if (
