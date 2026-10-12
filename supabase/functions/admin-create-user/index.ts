@@ -5,12 +5,24 @@ declare const Deno: {
   serve(handler: (request: Request) => Response | Promise<Response>): void;
 };
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "http://localhost:5173",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Vary": "Origin",
-};
+function getCorsHeaders(origin: string | null) {
+  const allowedOrigins = (Deno.env.get("ALLOWED_ORIGINS") ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  const headers: Record<string, string> = {
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Vary": "Origin",
+  };
+
+  if (origin && allowedOrigins.includes(origin)) {
+    headers["Access-Control-Allow-Origin"] = origin;
+  }
+
+  return headers;
+}
 
 type ErrorInfo = {
   code: string;
@@ -18,10 +30,18 @@ type ErrorInfo = {
   status: number | null;
 };
 
-function jsonResponse(body: Record<string, unknown>, status: number) {
+function jsonResponse(
+  body: Record<string, unknown>,
+  status: number,
+  corsHeaders: Record<string, string>,
+) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "no-store" },
+    headers: {
+      ...corsHeaders,
+      "Content-Type": "application/json",
+      "Cache-Control": "no-store",
+    },
   });
 }
 
@@ -47,15 +67,15 @@ function isDuplicateEmail(error: unknown) {
     message.includes("already exists");
 }
 
-function authCreationErrorResponse(error: unknown) {
+function authCreationErrorResponse(error: unknown, corsHeaders: Record<string, string>) {
   const { code, message, status } = getErrorInfo(error);
 
   if (status !== null && status >= 500) {
-    return jsonResponse({ pending: true }, 202);
+    return jsonResponse({ pending: true }, 202, corsHeaders);
   }
 
   if (isDuplicateEmail(error)) {
-    return jsonResponse({ error: "An account with that email already exists." }, 409);
+    return jsonResponse({ error: "An account with that email already exists." }, 409, corsHeaders);
   }
 
   const normalizedMessage = message.toLowerCase();
@@ -66,17 +86,21 @@ function authCreationErrorResponse(error: unknown) {
     knownPasswordCodes.includes(code.toLowerCase()) ||
     ((status === 400 || status === 422) && normalizedMessage.includes("password"))
   ) {
-    return jsonResponse({ error: "The temporary password does not meet Auth requirements." }, 400);
+    return jsonResponse(
+      { error: "The temporary password does not meet Auth requirements." },
+      400,
+      corsHeaders,
+    );
   }
 
   if (
     knownValidationCodes.includes(code.toLowerCase()) ||
     ((status === 400 || status === 422) && /email.*(invalid|valid)/i.test(message))
   ) {
-    return jsonResponse({ error: "The Auth service rejected the email address." }, 400);
+    return jsonResponse({ error: "The Auth service rejected the email address." }, 400, corsHeaders);
   }
 
-  return jsonResponse({ pending: true }, 202);
+  return jsonResponse({ pending: true }, 202, corsHeaders);
 }
 
 function isDefinitiveDatabaseError(error: unknown) {
@@ -84,23 +108,27 @@ function isDefinitiveDatabaseError(error: unknown) {
   return /^[0-9A-Z]{5}$/.test(code) && !code.startsWith("PGRST");
 }
 
-function databaseErrorResponse(error: unknown) {
+function databaseErrorResponse(error: unknown, corsHeaders: Record<string, string>) {
   const { code, message } = getErrorInfo(error);
   const normalizedMessage = message.toLowerCase();
 
   if (code === "23505" || normalizedMessage.includes("username already exists")) {
-    return jsonResponse({ error: "That username is already in use." }, 409);
+    return jsonResponse({ error: "That username is already in use." }, 409, corsHeaders);
   }
 
   if (normalizedMessage.includes("email already has a user profile")) {
-    return jsonResponse({ error: "That email is already linked to a user profile." }, 409);
+    return jsonResponse({ error: "That email is already linked to a user profile." }, 409, corsHeaders);
   }
 
   if (code === "42501") {
-    return jsonResponse({ error: "An active admin account is required." }, 403);
+    return jsonResponse({ error: "An active admin account is required." }, 403, corsHeaders);
   }
 
-  return jsonResponse({ error: "Unable to complete user creation. Verify the details and try again." }, 400);
+  return jsonResponse(
+    { error: "Unable to complete user creation. Verify the details and try again." },
+    400,
+    corsHeaders,
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -155,17 +183,19 @@ async function creationCommitted(
 }
 
 async function handleRequest(request: Request) {
+  const corsHeaders = getCorsHeaders(request.headers.get("Origin"));
+
   if (request.method === "OPTIONS") {
     return new Response("ok", { status: 200, headers: corsHeaders });
   }
 
   if (request.method !== "POST") {
-    return jsonResponse({ error: "Method not allowed." }, 405);
+    return jsonResponse({ error: "Method not allowed." }, 405, corsHeaders);
   }
 
   const authorization = request.headers.get("Authorization");
   if (!authorization?.match(/^Bearer\s+\S+$/i)) {
-    return jsonResponse({ error: "Authentication is required." }, 401);
+    return jsonResponse({ error: "Authentication is required." }, 401, corsHeaders);
   }
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
@@ -173,7 +203,7 @@ async function handleRequest(request: Request) {
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
   if (!supabaseUrl || !anonKey || !serviceRoleKey) {
-    return jsonResponse({ error: "User creation is not configured." }, 500);
+    return jsonResponse({ error: "User creation is not configured." }, 500, corsHeaders);
   }
 
   const callerClient = createClient(supabaseUrl, anonKey, {
@@ -186,23 +216,23 @@ async function handleRequest(request: Request) {
 
   const { data: callerData, error: callerError } = await callerClient.auth.getUser();
   if (callerError || !callerData.user) {
-    return jsonResponse({ error: "Authentication is required." }, 401);
+    return jsonResponse({ error: "Authentication is required." }, 401, corsHeaders);
   }
 
   const { error: adminError } = await callerClient.rpc("require_active_admin");
   if (adminError) {
-    return jsonResponse({ error: "An active admin account is required." }, 403);
+    return jsonResponse({ error: "An active admin account is required." }, 403, corsHeaders);
   }
 
   let body: Record<string, unknown>;
   try {
     const parsedBody: unknown = await request.json();
     if (!isRecord(parsedBody)) {
-      return jsonResponse({ error: "Invalid request." }, 400);
+      return jsonResponse({ error: "Invalid request." }, 400, corsHeaders);
     }
     body = parsedBody;
   } catch {
-    return jsonResponse({ error: "Invalid request." }, 400);
+    return jsonResponse({ error: "Invalid request." }, 400, corsHeaders);
   }
 
   const username = typeof body.username === "string" ? body.username.trim() : "";
@@ -215,27 +245,31 @@ async function handleRequest(request: Request) {
   const status = body.status;
 
   if (!username) {
-    return jsonResponse({ error: "Username is required." }, 400);
+    return jsonResponse({ error: "Username is required." }, 400, corsHeaders);
   }
 
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    return jsonResponse({ error: "Enter a valid email address." }, 400);
+    return jsonResponse({ error: "Enter a valid email address." }, 400, corsHeaders);
   }
 
   if (temporaryPassword.length < 8) {
-    return jsonResponse({ error: "Temporary passwords must be at least 8 characters." }, 400);
+    return jsonResponse(
+      { error: "Temporary passwords must be at least 8 characters." },
+      400,
+      corsHeaders,
+    );
   }
 
   if (role !== "ADMIN" && role !== "STAFF") {
-    return jsonResponse({ error: "Select a valid role." }, 400);
+    return jsonResponse({ error: "Select a valid role." }, 400, corsHeaders);
   }
 
   if (area !== "IAO" && area !== "CBR" && area !== "EFT") {
-    return jsonResponse({ error: "Select a valid area." }, 400);
+    return jsonResponse({ error: "Select a valid area." }, 400, corsHeaders);
   }
 
   if (status !== "ACTIVE" && status !== "INACTIVE") {
-    return jsonResponse({ error: "Select a valid status." }, 400);
+    return jsonResponse({ error: "Select a valid status." }, 400, corsHeaders);
   }
 
   const { data: usernameExists, error: usernameCheckError } = await serviceClient.rpc(
@@ -244,15 +278,15 @@ async function handleRequest(request: Request) {
   );
 
   if (usernameCheckError) {
-    return jsonResponse({ error: "Unable to verify username availability." }, 500);
+    return jsonResponse({ error: "Unable to verify username availability." }, 500, corsHeaders);
   }
 
   if (typeof usernameExists !== "boolean") {
-    return jsonResponse({ error: "Unable to verify username availability." }, 500);
+    return jsonResponse({ error: "Unable to verify username availability." }, 500, corsHeaders);
   }
 
   if (usernameExists) {
-    return jsonResponse({ error: "That username is already in use." }, 409);
+    return jsonResponse({ error: "That username is already in use." }, 409, corsHeaders);
   }
 
   let authCreation: Awaited<ReturnType<typeof serviceClient.auth.admin.createUser>>;
@@ -267,17 +301,17 @@ async function handleRequest(request: Request) {
   } catch {
     return jsonResponse({
       error: "Auth account creation could not be confirmed. Verify whether this email has an account before retrying.",
-    }, 503);
+    }, 503, corsHeaders);
   }
 
   const { data: authResult, error: authCreateError } = authCreation;
 
   if (authCreateError) {
-    return authCreationErrorResponse(authCreateError);
+    return authCreationErrorResponse(authCreateError, corsHeaders);
   }
 
   if (!authResult?.user) {
-    return jsonResponse({ pending: true }, 202);
+    return jsonResponse({ pending: true }, 202, corsHeaders);
   }
 
   const authUserId = authResult.user.id;
@@ -296,7 +330,7 @@ async function handleRequest(request: Request) {
     );
 
     if (!profileError) {
-      return jsonResponse({ success: true }, 201);
+      return jsonResponse({ success: true }, 201, corsHeaders);
     }
 
     if (!isDefinitiveDatabaseError(profileError)) {
@@ -311,20 +345,20 @@ async function handleRequest(request: Request) {
       ).catch(() => false);
 
       if (committed) {
-        return jsonResponse({ success: true }, 201);
+        return jsonResponse({ success: true }, 201, corsHeaders);
       }
 
-      return jsonResponse({ pending: true }, 202);
+      return jsonResponse({ pending: true }, 202, corsHeaders);
     }
 
     const { error: cleanupError } = await serviceClient.auth.admin.deleteUser(authUserId);
     if (cleanupError) {
       return jsonResponse({
         error: "Profile creation failed and Auth cleanup could not be confirmed. Contact an administrator before retrying.",
-      }, 500);
+      }, 500, corsHeaders);
     }
 
-    return databaseErrorResponse(profileError);
+    return databaseErrorResponse(profileError, corsHeaders);
   } catch {
     const committed = await creationCommitted(
       serviceClient,
@@ -337,15 +371,19 @@ async function handleRequest(request: Request) {
     ).catch(() => false);
 
     if (committed) {
-      return jsonResponse({ success: true }, 201);
+      return jsonResponse({ success: true }, 201, corsHeaders);
     }
 
-    return jsonResponse({ pending: true }, 202);
+    return jsonResponse({ pending: true }, 202, corsHeaders);
   }
 }
 
 Deno.serve((request) =>
   handleRequest(request).catch(() =>
-    jsonResponse({ error: "Internal server error." }, 500)
+    jsonResponse(
+      { error: "Internal server error." },
+      500,
+      getCorsHeaders(request.headers.get("Origin")),
+    )
   )
 );
