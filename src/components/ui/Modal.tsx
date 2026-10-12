@@ -7,6 +7,7 @@ interface ModalProps {
   onClose: () => void;
   children: ReactNode;
   wide?: boolean;
+  large?: boolean;
 }
 
 export default function Modal({
@@ -15,14 +16,19 @@ export default function Modal({
   onClose,
   children,
   wide = false,
+  large = false,
 }: ModalProps) {
   if (!open) return null;
 
-  const panelClass = wide
-    ? "my-4 w-[calc(100vw-2rem)] max-w-[960px] overflow-hidden rounded-2xl bg-white shadow-2xl shadow-slate-900/20 ring-1 ring-slate-900/5 sm:my-8 2xl:max-w-[1100px]"
+  const panelClass = large
+    ? "my-3 flex h-[85vh] max-h-[calc(100vh-1.5rem)] w-[95vw] max-w-[1250px] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl shadow-slate-900/20 ring-1 ring-slate-900/5 sm:my-6 sm:w-[90vw]"
+    : wide
+      ? "my-4 w-[calc(100vw-2rem)] max-w-[960px] overflow-hidden rounded-2xl bg-white shadow-2xl shadow-slate-900/20 ring-1 ring-slate-900/5 sm:my-8 2xl:max-w-[1100px]"
     : "my-4 w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl shadow-slate-900/20 ring-1 ring-slate-900/5 sm:my-8";
   const bodyClass =
-    "max-h-[calc(100vh-8rem)] overflow-y-auto px-4 py-4 sm:px-6 sm:py-5";
+    large
+      ? "flex min-h-0 flex-1 flex-col overflow-hidden px-4 py-4 sm:px-6 sm:py-5"
+      : "max-h-[calc(100vh-8rem)] overflow-y-auto px-4 py-4 sm:px-6 sm:py-5";
 
   return (
     <div

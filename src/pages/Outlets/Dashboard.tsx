@@ -545,12 +545,11 @@ export default function OutletDashboard() {
         onClose={() => setSelectedDetail(null)}
         title={detailTitle}
         wide={isWideDetailView}
+        large
       >
         <div
           className={
-            isWideDetailView
-              ? "flex min-h-0 flex-1 flex-col gap-4"
-              : "space-y-5"
+            "flex min-h-0 flex-1 flex-col gap-4"
           }
         >
           <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
@@ -585,9 +584,7 @@ export default function OutletDashboard() {
           ) : (
             <div
               className={
-                isWideDetailView
-                  ? "min-h-0 max-h-[65vh] flex-1 overflow-auto rounded-xl border border-slate-200"
-                  : "max-h-[min(60vh,28rem)] overflow-auto rounded-xl border border-slate-200"
+                "min-h-0 flex-1 overflow-auto rounded-xl border border-slate-200"
               }
             >
               {isRecentView ? (
@@ -740,9 +737,7 @@ export default function OutletDashboard() {
             </div>
           )}
           <div
-            className={`flex shrink-0 flex-col-reverse gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between ${
-              isWideDetailView ? "mt-auto" : ""
-            }`}
+            className="mt-auto flex shrink-0 flex-col-reverse gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between"
           >
             <div className="flex flex-wrap gap-2">
               {selectedDetail?.type === "issue" && selectedDetail.label === "Missing DEGIC Number" && (
