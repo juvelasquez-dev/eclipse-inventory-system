@@ -16,6 +16,7 @@ import { useInventory } from "../../hooks/useInventory";
 import { toBusinessDateKey } from "../../utils/businessDate";
 import {
   getCancelledOutQuantities,
+  getLinkedPosAdditionalOutQuantity,
   getNetOutQuantity,
 } from "../../utils/inventoryReversals";
 
@@ -58,9 +59,8 @@ export default function Dashboard() {
    *
    * IN          = stock received
    * OUT         = stock released
-   * ADJUSTMENT  = excluded from movement, except matched
-   *               POS cancellations, which reduce the original
-   *               sale's Stock Out (net of cancelled sales)
+   * ADJUSTMENT  = excluded from movement, except POS-linked
+   *               returns and additional quantities
    */
   const stockMovement = useMemo(() => {
     const movement: Record<
@@ -76,9 +76,13 @@ export default function Dashboard() {
       getCancelledOutQuantities(transactions);
 
     transactions.forEach((transaction) => {
+      const additionalPosOut =
+        getLinkedPosAdditionalOutQuantity(transaction, cancelledOut);
+
       if (
         transaction.type !== "IN" &&
-        transaction.type !== "OUT"
+        transaction.type !== "OUT" &&
+        additionalPosOut === 0
       ) {
         return;
       }
@@ -117,6 +121,8 @@ export default function Dashboard() {
             transaction,
             cancelledOut
           );
+      } else if (additionalPosOut > 0) {
+        movement[dateKey].stockOut += additionalPosOut;
       }
     });
 
@@ -198,20 +204,14 @@ export default function Dashboard() {
     const cancelledOut =
       getCancelledOutQuantities(transactions);
 
-    transactions
-      .filter(
-        (transaction) =>
-          transaction.type === "OUT"
-      )
-      .forEach((transaction) => {
-        totals[transaction.productId] =
-          (totals[transaction.productId] ??
-            0) +
-          getNetOutQuantity(
-            transaction,
-            cancelledOut
-          );
-      });
+    transactions.forEach((transaction) => {
+      const netOut =
+        transaction.type === "OUT"
+          ? getNetOutQuantity(transaction, cancelledOut)
+          : getLinkedPosAdditionalOutQuantity(transaction, cancelledOut);
+      totals[transaction.productId] =
+        (totals[transaction.productId] ?? 0) + netOut;
+    });
 
     return products
       .map((product) => ({

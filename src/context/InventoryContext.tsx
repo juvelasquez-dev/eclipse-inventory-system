@@ -164,6 +164,9 @@ function mapTransaction(
     quantity: row.quantity,
     date: row.date,
     remarks: row.remarks ?? "",
+    posTransactionId: row.pos_transaction_id ?? null,
+    posRevision: row.pos_revision ?? null,
+    posEventId: row.pos_event_id ?? null,
   };
 }
 

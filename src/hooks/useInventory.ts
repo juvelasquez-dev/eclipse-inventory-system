@@ -2,6 +2,7 @@ import { useInventoryContext } from "../context/InventoryContext";
 import { toBusinessDateKey, todayBusinessKey } from "../utils/businessDate";
 import {
   getCancelledOutQuantities,
+  getLinkedPosAdditionalOutQuantity,
   getNetOutQuantity,
 } from "../utils/inventoryReversals";
 
@@ -58,7 +59,10 @@ export function useInventory() {
   const stockOutToday =
     context.transactions
       .filter((transaction) => {
-        if (transaction.type !== "OUT") {
+        if (
+          transaction.type !== "OUT" &&
+          getLinkedPosAdditionalOutQuantity(transaction, cancelledOutQuantities) === 0
+        ) {
           return false;
         }
 
@@ -69,10 +73,10 @@ export function useInventory() {
       })
       .reduce(
         (sum, transaction) =>
-          sum +
-          getNetOutQuantity(
-            transaction,
-            cancelledOutQuantities
+          sum + (
+            transaction.type === "OUT"
+              ? getNetOutQuantity(transaction, cancelledOutQuantities)
+              : getLinkedPosAdditionalOutQuantity(transaction, cancelledOutQuantities)
           ),
         0
       );
@@ -188,6 +192,8 @@ export function useInventory() {
                 Math.abs(
                   transaction.quantity
                 );
+              movement.stockOut +=
+                getLinkedPosAdditionalOutQuantity(transaction, cancelled);
             }
           }
 
@@ -212,9 +218,26 @@ export function useInventory() {
   function getProductMovementSummary() {
     return context.products.map(
       (product) => {
+        const productTransactions =
+          context.transactions.filter(
+            (transaction) =>
+              transaction.productId === product.id
+          );
+        const cancelled =
+          getCancelledOutQuantities(productTransactions);
         const movement =
           getProductMovement(
             product.id
+          );
+        const linkedPosAdjustmentOut =
+          productTransactions.reduce(
+            (total, transaction) =>
+              total +
+              getLinkedPosAdditionalOutQuantity(
+                transaction,
+                cancelled
+              ),
+            0
           );
 
         return {
@@ -242,7 +265,8 @@ export function useInventory() {
             movement.stockIn +
             movement.stockOut +
             movement.adjustmentIn +
-            movement.adjustmentOut,
+            movement.adjustmentOut -
+            linkedPosAdjustmentOut,
         };
       }
     );

@@ -20,6 +20,9 @@ export interface Transaction {
   quantity: number;
   date: string;
   remarks?: string;
+  posTransactionId?: string | null;
+  posRevision?: number | null;
+  posEventId?: string | null;
 }
 
 export type OutletStatus = "Active" | "Inactive";
