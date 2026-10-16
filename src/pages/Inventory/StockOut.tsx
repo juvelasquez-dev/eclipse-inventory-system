@@ -21,6 +21,7 @@ import { categories } from "../../mock/categories";
 import {
   readStockExcel,
   validateStockRows,
+  splitZeroQuantityStockInRows,
   exportStockTemplate,
   type ExcelValidationResult,
 } from "../../utils/excel";
@@ -42,6 +43,9 @@ export default function StockOut() {
 
   const [importFileName, setImportFileName] =
     useState("");
+
+  const [skippedZeroCount, setSkippedZeroCount] =
+    useState(0);
 
   const [importLoading, setImportLoading] =
     useState(false);
@@ -185,9 +189,25 @@ export default function StockOut() {
       const rows =
         await readStockExcel(file);
 
+      const {
+        rows: importableRows,
+        skippedCount,
+      } =
+        splitZeroQuantityStockInRows(rows);
+
+      if (
+        rows.length > 0 &&
+        importableRows.length === 0
+      ) {
+        showToast(
+          "No stock-out quantities to import."
+        );
+        return;
+      }
+
       const validationResults =
         validateStockRows(
-          rows,
+          importableRows,
           products,
           "OUT",
           getProductStock
@@ -196,6 +216,7 @@ export default function StockOut() {
       setImportRows(
         validationResults
       );
+      setSkippedZeroCount(skippedCount);
 
       setImportOpen(true);
     } catch (error) {
@@ -377,6 +398,7 @@ export default function StockOut() {
 
   function handleCancelImport() {
     setImportRows([]);
+    setSkippedZeroCount(0);
     setImportFileName("");
     setImportOpen(false);
   }
@@ -684,6 +706,15 @@ export default function StockOut() {
               </div>
 
             </div>
+
+            {skippedZeroCount > 0 && (
+              <p className="text-sm text-slate-500">
+                <span className="font-semibold">
+                  {skippedZeroCount}
+                </span>{" "}
+                skipped (zero or blank quantity)
+              </p>
+            )}
 
             {/* Validation Table */}
             {importRows.length > 0 && (

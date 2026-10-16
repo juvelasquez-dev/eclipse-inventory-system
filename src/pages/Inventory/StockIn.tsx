@@ -21,6 +21,7 @@ import { categories } from "../../mock/categories";
 import {
   readStockExcel,
   validateStockRows,
+  splitZeroQuantityStockInRows,
   exportStockTemplate,
   type ExcelValidationResult,
 } from "../../utils/excel";
@@ -33,6 +34,9 @@ export default function StockIn() {
 
   const [importRows, setImportRows] =
     useState<ExcelValidationResult[]>([]);
+
+  const [skippedZeroCount, setSkippedZeroCount] =
+    useState(0);
 
   const [importLoading, setImportLoading] =
     useState(false);
@@ -142,15 +146,32 @@ export default function StockIn() {
       const rows =
         await readStockExcel(file);
 
+      const {
+        rows: importableRows,
+        skippedCount,
+      } =
+        splitZeroQuantityStockInRows(rows);
+
+      if (
+        rows.length > 0 &&
+        importableRows.length === 0
+      ) {
+        showToast(
+          "No stock-in quantities to import."
+        );
+        return;
+      }
+
       const validatedRows =
         validateStockRows(
-          rows,
+          importableRows,
           products,
           "IN",
           () => 0
         );
 
       setImportRows(validatedRows);
+      setSkippedZeroCount(skippedCount);
       setImportOpen(true);
     } catch (error) {
       console.error(
@@ -195,6 +216,7 @@ export default function StockIn() {
   function closeImportModal() {
     setImportOpen(false);
     setImportRows([]);
+    setSkippedZeroCount(0);
   }
 
   const validRows =
@@ -514,6 +536,15 @@ export default function StockIn() {
                   </span>{" "}
                   errors
                 </div>
+
+                {skippedZeroCount > 0 && (
+                  <div className="text-slate-500">
+                    <span className="font-semibold">
+                      {skippedZeroCount}
+                    </span>{" "}
+                    skipped (zero or blank quantity)
+                  </div>
+                )}
 
               </div>
 

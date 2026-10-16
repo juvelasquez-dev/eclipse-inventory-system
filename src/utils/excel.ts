@@ -6,8 +6,34 @@ export interface ExcelStockRow {
   rowNumber: number;
   productCode: string;
   quantity: number;
+  quantityBlank?: boolean;
   date?: string;
   remarks?: string;
+}
+
+/*
+ * Stock In / Stock Out imports: drops rows whose quantity is an
+ * explicit 0 or blank (empty/whitespace/missing) so they
+ * are never validated or imported. Non-numeric (NaN) and
+ * negative quantities are kept so validation rejects them.
+ */
+export function splitZeroQuantityStockInRows(
+  rows: ExcelStockRow[]
+): {
+  rows: ExcelStockRow[];
+  skippedCount: number;
+} {
+  const kept = rows.filter(
+    (row) =>
+      !row.quantityBlank &&
+      row.quantity !== 0
+  );
+
+  return {
+    rows: kept,
+    skippedCount:
+      rows.length - kept.length,
+  };
 }
 
 export interface ExcelValidationResult
@@ -79,6 +105,13 @@ export function readStockExcel(
                 row["quantity"] ??
                 0
             ),
+
+            quantityBlank:
+              String(
+                row["Quantity"] ??
+                  row["quantity"] ??
+                  ""
+              ).trim() === "",
 
             date:
               String(
