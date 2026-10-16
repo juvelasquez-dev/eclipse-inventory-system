@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import Button from "../../components/ui/Button";
@@ -8,6 +8,9 @@ import Select from "../../components/ui/Select";
 import DeliveryReceiptPrint, {
   type ReceiptData,
 } from "../../components/pos/DeliveryReceiptPrint";
+import POSOrderEditor, {
+  type EditablePOSTransaction,
+} from "../../components/pos/POSOrderEditor";
 import { useInventoryContext } from "../../context/InventoryContext";
 import { useToast } from "../../context/ToastContext";
 import { supabase } from "../../lib/supabase";
@@ -18,6 +21,17 @@ import {
   todayBusinessKey,
   toBusinessDateKey,
 } from "../../utils/businessDate";
+import {
+  cancellationRetryStorageKey,
+  clearSessionAttempt,
+  createRetryAttemptTimestamp,
+  POS_RETRY_ATTEMPT_VERSION,
+  POS_RETRY_ATTEMPT_TTL_MS,
+  readCancellationAttempt,
+  type CancellationRetryAttempt,
+  type StoredAttemptResult,
+  writeSessionAttempt,
+} from "../../utils/posRetryRecovery";
 
 interface POSHistoryRow extends ReceiptData {
   id: string;
@@ -26,9 +40,78 @@ interface POSHistoryRow extends ReceiptData {
   cancelledAt: string | null;
   cancelledByUsername: string;
   cancellationReason: string;
+  revisionNumber: number;
 }
 
-function getDisplayReceiptNumber(row: any) {
+interface POSHistoryDbRow {
+  id: string;
+  delivery_receipt_sequence: number | null;
+  area_code: string | null;
+  receipt_number: number | null;
+  created_by: string | null;
+  customer_name: string | null;
+  customer_address: string | null;
+  customer_phone: string | null;
+  subtotal: number | string;
+  amount_received: number | string;
+  change_amount: number | string;
+  payment_method: string | null;
+  transaction_status: string | null;
+  created_at: string;
+  cancelled_at: string | null;
+  cancelled_by: string | null;
+  cancellation_reason: string | null;
+  revision_number: number;
+}
+
+interface POSHistoryItemRow {
+  transaction_id: string;
+  product_id: string;
+  product_name_snapshot: string;
+  product_code_snapshot: string;
+  unit_snapshot: string;
+  unit_price: number | string;
+  quantity: number;
+  line_amount: number | string;
+}
+
+interface POSHistorySnapshot {
+  transaction: POSHistoryDbRow;
+  items: POSHistoryItemRow[];
+}
+
+interface POSAuditRevision {
+  revision_number: number;
+  snapshot: POSHistorySnapshot;
+  actor_user_id: string | null;
+  reason: string | null;
+  created_at: string;
+}
+
+interface POSAuditEvent {
+  event_type: string;
+  revision_number: number;
+  from_status: string | null;
+  to_status: string;
+  actor_user_id: string | null;
+  reason: string | null;
+  created_at: string;
+  details: Record<string, unknown>;
+}
+
+interface POSAudit {
+  transaction_id: string;
+  revision_number: number;
+  copied_to_iao: boolean;
+  revisions: POSAuditRevision[];
+  events: POSAuditEvent[];
+}
+
+type CancellationRecoveryStatus =
+  | StoredAttemptResult<CancellationRetryAttempt>
+  | { status: "loading" | "auth-unavailable" };
+
+function getDisplayReceiptNumber(row: POSHistoryDbRow) {
   if (
     row.area_code &&
     row.receipt_number !== null &&
@@ -48,13 +131,13 @@ function getDisplayReceiptNumber(row: any) {
 }
 
 function mapHistoryRow(
-  row: any,
-  itemRows: any[],
+  row: POSHistoryDbRow,
+  itemRows: POSHistoryItemRow[],
   cashierUsername: string,
   cancelledByUsername: string
 ): POSHistoryRow {
   const items = itemRows.map(
-    (item: any) => ({
+    (item) => ({
       product: {
         id: item.product_id,
         code: item.product_code_snapshot,
@@ -85,6 +168,7 @@ function mapHistoryRow(
     cancelledAt: row.cancelled_at ?? null,
     cancelledByUsername,
     cancellationReason: row.cancellation_reason ?? "",
+    revisionNumber: Number(row.revision_number ?? 1),
   };
 }
 
@@ -194,7 +278,27 @@ export default function POSHistory() {
     useState<POSHistoryRow | null>(null);
   const [cancellationReason, setCancellationReason] =
     useState("");
+  const [editingTransaction, setEditingTransaction] =
+    useState<EditablePOSTransaction | null>(null);
+  const [transactionAudit, setTransactionAudit] =
+    useState<POSAudit | null>(null);
+  const [auditLoading, setAuditLoading] =
+    useState(false);
+  const activeAuditTransactionId = useRef<string | null>(null);
   const [isCancelling, setIsCancelling] =
+    useState(false);
+  const cancellationSubmissionLock = useRef(false);
+  const [cancellationUserId, setCancellationUserId] =
+    useState<string | null>(null);
+  const cancellationUserIdRef = useRef<string | null>(null);
+  const cancellationAuthEventVersion = useRef(0);
+  const [historyLoadTrigger, setHistoryLoadTrigger] = useState(0);
+  const historyLoadRequestVersion = useRef(0);
+  const [cancellationRecovery, setCancellationRecovery] =
+    useState<CancellationRecoveryStatus>({ status: "loading" });
+  const [confirmCancellationDiscard, setConfirmCancellationDiscard] =
+    useState(false);
+  const [confirmExpiredCancellationRetry, setConfirmExpiredCancellationRetry] =
     useState(false);
   const [historyRefreshVersion, setHistoryRefreshVersion] =
     useState(0);
@@ -232,157 +336,155 @@ export default function POSHistory() {
   }, [receipt, printRequested]);
 
   useEffect(() => {
-    async function loadTransactions() {
-      const {
-        data: { user },
-        error: authError,
-      } = await supabase.auth.getUser();
-
-      if (authError || !user) {
-        setLoading(false);
-        navigate("/login", {
-          replace: true,
-        });
-        return;
-      }
-
-      const { data, error } = await supabase
-        .from("pos_transactions")
-        .select(
-          "id, delivery_receipt_sequence, area_code, receipt_number, created_by, customer_name, customer_address, customer_phone, subtotal, amount_received, change_amount, payment_method, transaction_status, created_at, cancelled_at, cancelled_by, cancellation_reason"
-        )
-        .order("created_at", {
-          ascending: false,
-        });
-
-      if (error) {
-        setLoadError(error.message);
-        showToast(
-          error.message ||
-            "Unable to load POS transaction history.",
-          "error"
+    const { data: authListener } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        const userId = session?.user.id ?? null;
+        cancellationAuthEventVersion.current += 1;
+        setHistoryLoadTrigger((version) => version + 1);
+        cancellationUserIdRef.current = userId;
+        setCancellationUserId(userId);
+        setCancellationRecovery(
+          userId
+            ? readCancellationAttempt(userId)
+            : { status: "auth-unavailable" }
         );
-        setLoading(false);
-        return;
       }
+    );
+    return () => authListener.subscription.unsubscribe();
+  }, []);
 
-      const transactionIds = (data ?? []).map(
-        (row) => row.id
-      );
+  useEffect(() => {
+    const requestVersion = ++historyLoadRequestVersion.current;
+    const authEventVersion = cancellationAuthEventVersion.current;
+    let isActive = true;
+    const isCurrentRequest = () =>
+      isActive &&
+      requestVersion === historyLoadRequestVersion.current &&
+      authEventVersion === cancellationAuthEventVersion.current;
 
-      let itemRows: any[] = [];
+    async function loadTransactions() {
+      try {
+        await Promise.resolve();
+        if (!isCurrentRequest()) return;
+        setLoading(true);
+        setLoadError("");
 
-      if (transactionIds.length > 0) {
         const {
-          data: loadedItems,
-          error: itemError,
-        } = await supabase
-          .from("pos_transaction_items")
-          .select(
-            "transaction_id, product_id, product_name_snapshot, product_code_snapshot, unit_snapshot, unit_price, quantity, line_amount"
-          )
-          .in("transaction_id", transactionIds);
+          data: { user },
+          error: authError,
+        } = await supabase.auth.getUser();
 
-        if (itemError) {
-          setLoadError(itemError.message);
-          showToast(
-            itemError.message ||
-              "Unable to load POS transaction items.",
-            "error"
-          );
-          setLoading(false);
+        if (!isCurrentRequest()) return;
+        if (authError || !user) {
+          cancellationUserIdRef.current = null;
+          setCancellationRecovery({ status: "auth-unavailable" });
+          navigate("/login", { replace: true });
           return;
         }
+        cancellationUserIdRef.current = user.id;
+        setCancellationUserId(user.id);
+        setCancellationRecovery(readCancellationAttempt(user.id));
 
-        itemRows = loadedItems ?? [];
-      }
-
-      const { data: profileUsername, error: usernameError } =
-        await supabase.rpc("get_current_username");
-
-      if (usernameError) {
-        console.error("Unable to load current username:", usernameError);
-      }
-
-      const currentUsername =
-        profileUsername ||
-        "Unknown cashier";
-
-      const cashierUserIds = Array.from(
-        new Set(
-          (data ?? [])
-            .flatMap((row) => [
-              row.created_by,
-              row.cancelled_by,
-            ])
-            .filter(Boolean)
-        )
-      );
-
-      const cashierUsernameById =
-        new Map<string, string>();
-
-      if (cashierUserIds.length > 0) {
-        const {
-          data: cashierRows,
-          error: cashierError,
-        } = await supabase.rpc(
-          "get_cashier_usernames",
-          {
-            p_user_ids: cashierUserIds,
-          }
-        );
-
-        if (cashierError) {
-          console.error(
-            "Unable to resolve cashier usernames:",
-            cashierError
-          );
-        } else {
-          (cashierRows ?? []).forEach(
-            (cashier: any) => {
-              if (
-                cashier.user_id &&
-                cashier.username
-              ) {
-                cashierUsernameById.set(
-                  cashier.user_id,
-                  cashier.username
-                );
-              }
-            }
-          );
-        }
-      }
-
-      setTransactions(
-        (data ?? []).map((row) =>
-          mapHistoryRow(
-            row,
-            itemRows.filter(
-              (item) =>
-                item.transaction_id === row.id
-            ),
-            cashierUsernameById.get(
-              row.created_by
-            ) ||
-              (row.created_by === user.id
-                ? currentUsername
-                : "Unknown cashier"),
-            cashierUsernameById.get(
-              row.cancelled_by
-            ) ||
-              (row.cancelled_by === user.id
-                ? currentUsername
-                : "Unknown user")
+        const { data, error } = await supabase
+          .from("pos_transactions")
+          .select(
+            "id, delivery_receipt_sequence, area_code, receipt_number, created_by, customer_name, customer_address, customer_phone, subtotal, amount_received, change_amount, payment_method, transaction_status, created_at, cancelled_at, cancelled_by, cancellation_reason, revision_number"
           )
-        )
-      );
-      setLoading(false);
+          .order("created_at", {
+            ascending: false,
+          });
+
+        if (!isCurrentRequest()) return;
+        if (error) throw new Error(error.message || "Unable to load POS transaction history.");
+
+        const transactionIds = (data ?? []).map((row) => row.id);
+        let itemRows: any[] = [];
+
+        if (transactionIds.length > 0) {
+          const {
+            data: loadedItems,
+            error: itemError,
+          } = await supabase
+            .from("pos_transaction_items")
+            .select(
+              "transaction_id, product_id, product_name_snapshot, product_code_snapshot, unit_snapshot, unit_price, quantity, line_amount"
+            )
+            .in("transaction_id", transactionIds);
+
+          if (!isCurrentRequest()) return;
+          if (itemError) throw new Error(itemError.message || "Unable to load POS transaction items.");
+          itemRows = loadedItems ?? [];
+        }
+
+        const { data: profileUsername, error: usernameError } =
+          await supabase.rpc("get_current_username");
+
+        if (!isCurrentRequest()) return;
+        if (usernameError) {
+          console.error("Unable to load current username:", usernameError);
+        }
+
+        const currentUsername = profileUsername || "Unknown cashier";
+        const cashierUserIds = Array.from(
+          new Set(
+            (data ?? [])
+              .flatMap((row) => [row.created_by, row.cancelled_by])
+              .filter(Boolean)
+          )
+        );
+        const cashierUsernameById = new Map<string, string>();
+
+        if (cashierUserIds.length > 0) {
+          const {
+            data: cashierRows,
+            error: cashierError,
+          } = await supabase.rpc("get_cashier_usernames", {
+            p_user_ids: cashierUserIds,
+          });
+
+          if (!isCurrentRequest()) return;
+          if (cashierError) {
+            console.error("Unable to resolve cashier usernames:", cashierError);
+          } else {
+            (cashierRows ?? []).forEach((cashier: any) => {
+              if (cashier.user_id && cashier.username) {
+                cashierUsernameById.set(cashier.user_id, cashier.username);
+              }
+            });
+          }
+        }
+
+        if (!isCurrentRequest()) return;
+        setTransactions(
+          (data ?? []).map((row) =>
+            mapHistoryRow(
+              row,
+              itemRows.filter((item) => item.transaction_id === row.id),
+              cashierUsernameById.get(row.created_by) ||
+                (row.created_by === user.id ? currentUsername : "Unknown cashier"),
+              cashierUsernameById.get(row.cancelled_by) ||
+                (row.cancelled_by === user.id ? currentUsername : "Unknown user")
+            )
+          )
+        );
+      } catch (error) {
+        if (!isCurrentRequest()) return;
+        const message = error instanceof Error
+          ? error.message
+          : "Unable to load POS transaction history.";
+        console.error("Unable to load POS transaction history:", error);
+        setLoadError(message);
+        showToast(message, "error");
+      } finally {
+        if (isCurrentRequest()) setLoading(false);
+      }
     }
 
     void loadTransactions();
-  }, [navigate, showToast, historyRefreshVersion]);
+    return () => {
+      isActive = false;
+    };
+  }, [navigate, showToast, historyRefreshVersion, historyLoadTrigger]);
 
   /*
    * =========================================================
@@ -599,11 +701,16 @@ export default function POSHistory() {
 
   function openDetails(transaction: POSHistoryRow) {
     setSelectedTransaction(transaction);
+    setTransactionAudit(null);
+    activeAuditTransactionId.current = transaction.id;
+    void loadTransactionAudit(transaction.id);
   }
 
   function closeDetails() {
     setSelectedTransaction(null);
     setReceipt(null);
+    setTransactionAudit(null);
+    activeAuditTransactionId.current = null;
   }
 
   function printTransaction(transaction: POSHistoryRow) {
@@ -613,7 +720,13 @@ export default function POSHistory() {
 
   function openCancellation(transaction: POSHistoryRow) {
     setCancellationTarget(transaction);
-    setCancellationReason("");
+    setCancellationReason(
+      cancellationRecovery.status !== "missing" &&
+        "attempt" in cancellationRecovery &&
+        cancellationRecovery.attempt.transactionId === transaction.id
+        ? cancellationRecovery.attempt.reason
+        : ""
+    );
   }
 
   function closeCancellation() {
@@ -623,40 +736,286 @@ export default function POSHistory() {
   }
 
   async function cancelTransaction() {
-    if (!cancellationTarget || isCancelling) return;
+    if (
+      !cancellationTarget ||
+      cancellationSubmissionLock.current ||
+      !cancellationUserId ||
+      cancellationUserId !== cancellationUserIdRef.current
+    ) return;
+    const normalizedReason = cancellationReason.trim();
+    if (cancellationRecovery.status !== "missing") {
+      const existingAttempt =
+        "attempt" in cancellationRecovery
+          ? cancellationRecovery.attempt
+          : null;
+      if (
+        cancellationRecovery.status !== "valid" ||
+        !existingAttempt ||
+        existingAttempt.userId !== cancellationUserId ||
+        existingAttempt.transactionId !== cancellationTarget.id ||
+        existingAttempt.reason !== normalizedReason
+      ) {
+        showToast(
+          "Resolve the saved cancellation first. Retry the exact transaction and reason, or explicitly discard it before starting another cancellation.",
+          "error"
+        );
+        return;
+      }
+      await submitCancellationAttempt(existingAttempt);
+      return;
+    }
 
+    const attempt: CancellationRetryAttempt = {
+      version: POS_RETRY_ATTEMPT_VERSION,
+      requestId: crypto.randomUUID(),
+      userId: cancellationUserId,
+      transactionId: cancellationTarget.id,
+      reason: normalizedReason,
+      createdAt: createRetryAttemptTimestamp(),
+    };
+    if (
+      !writeSessionAttempt(
+        cancellationRetryStorageKey(cancellationUserId),
+        attempt
+      )
+    ) {
+      setCancellationRecovery({ status: "unavailable" });
+      setCancellationTarget(null);
+      setCancellationReason("");
+      showToast(
+        "Session storage is unavailable. Cancellation was not sent because reload-safe recovery cannot be guaranteed.",
+        "error"
+      );
+      return;
+    }
+    setCancellationRecovery({ status: "valid", attempt });
+    await submitCancellationAttempt(attempt);
+  }
+
+  async function retryPreviousCancellation() {
+    if (
+      cancellationSubmissionLock.current ||
+      cancellationRecovery.status !== "valid" ||
+      cancellationRecovery.attempt.userId !== cancellationUserId ||
+      cancellationRecovery.attempt.userId !== cancellationUserIdRef.current
+    ) {
+      return;
+    }
+    const latestAttempt = readCancellationAttempt(cancellationUserId);
+    setCancellationRecovery(latestAttempt);
+    if (latestAttempt.status !== "valid") return;
+    await submitCancellationAttempt(latestAttempt.attempt);
+  }
+
+  async function continueExpiredCancellationRecovery() {
+    if (
+      cancellationSubmissionLock.current ||
+      cancellationRecovery.status !== "expired" ||
+      cancellationRecovery.attempt.userId !== cancellationUserId ||
+      cancellationRecovery.attempt.userId !== cancellationUserIdRef.current
+    ) {
+      return;
+    }
+    const latestAttempt = readCancellationAttempt(cancellationUserId);
+    setCancellationRecovery(latestAttempt);
+    if (latestAttempt.status !== "expired") return;
+    setConfirmExpiredCancellationRetry(false);
+    await submitCancellationAttempt(latestAttempt.attempt);
+  }
+
+  async function submitCancellationAttempt(
+    attempt: CancellationRetryAttempt
+  ) {
+    if (
+      cancellationSubmissionLock.current ||
+      isCancelling ||
+      attempt.userId !== cancellationUserIdRef.current ||
+      attempt.userId !== cancellationUserId
+    ) return;
+    cancellationSubmissionLock.current = true;
     setIsCancelling(true);
-
     try {
       const { data, error } = await supabase.rpc(
-        "cancel_pos_transaction",
+        "cancel_pos_transaction_with_request",
         {
-          p_transaction_id: cancellationTarget.id,
-          p_cancellation_reason: cancellationReason,
+          p_transaction_id: attempt.transactionId,
+          p_cancellation_reason: attempt.reason,
+          p_request_id: attempt.requestId,
         }
       );
 
       if (error) throw error;
 
-      await refreshInventory();
+      if (
+        typeof data !== "object" ||
+        data === null ||
+        !("transaction_id" in data) ||
+        !("transaction_status" in data) ||
+        !("display_receipt_number" in data) ||
+        data.transaction_id !== attempt.transactionId ||
+        data.transaction_status !== "CANCELLED" ||
+        typeof data.display_receipt_number !== "string" ||
+        data.display_receipt_number.length === 0
+      ) {
+        setCancellationTarget(null);
+        setCancellationReason("");
+        showToast(
+          "Cancellation may have completed, but its confirmation was incomplete. Retrying sends the same request ID; whether the server returns the earlier result depends on its idempotency record. Check transaction history before discarding this attempt.",
+          "error"
+        );
+        return;
+      }
+
+      const cleared = clearSessionAttempt(
+        cancellationRetryStorageKey(attempt.userId)
+      );
+      if (cancellationUserIdRef.current !== attempt.userId) return;
+      if (cleared) {
+        setCancellationRecovery({ status: "missing" });
+        setConfirmCancellationDiscard(false);
+      }
       setSelectedTransaction(null);
+      setTransactionAudit(null);
       setCancellationTarget(null);
       setCancellationReason("");
       setHistoryRefreshVersion((version) => version + 1);
-      showToast(
-        `Order ${(data as { display_receipt_number?: string } | null)?.display_receipt_number ?? cancellationTarget.deliveryReceiptNumber} cancelled and inventory restored.`
+      showToast(cleared
+        ? `Order ${data.display_receipt_number} cancelled and inventory restored.`
+        : `Order ${data.display_receipt_number} is cancelled. The retry record could not be cleared; resolve it before starting another cancellation.`,
+        cleared ? "success" : "error"
       );
+      try {
+        await refreshInventory();
+      } catch (error) {
+        console.error("Cancellation succeeded, but inventory refresh failed:", error);
+        showToast(
+          "Cancellation succeeded, but inventory could not be refreshed. Refresh the inventory view before relying on its displayed stock.",
+          "error"
+        );
+      }
     } catch (error) {
+      setCancellationTarget(null);
+      setCancellationReason("");
       console.error("Unable to cancel POS transaction:", error);
       showToast(
         error instanceof Error
           ? error.message
-          : "Unable to cancel this POS transaction.",
+          : "Cancellation confirmation is uncertain. The saved attempt is retained; retry it before starting another cancellation.",
         "error"
       );
     } finally {
+      cancellationSubmissionLock.current = false;
       setIsCancelling(false);
     }
+  }
+
+  function discardCancellationAttempt() {
+    if (
+      cancellationSubmissionLock.current ||
+      !cancellationUserId ||
+      cancellationUserId !== cancellationUserIdRef.current
+    ) return;
+    if (!clearSessionAttempt(cancellationRetryStorageKey(cancellationUserId))) {
+      setCancellationRecovery({ status: "unavailable" });
+      showToast("Unable to remove the saved cancellation attempt from this tab.", "error");
+      return;
+    }
+    setCancellationRecovery({ status: "missing" });
+    setConfirmCancellationDiscard(false);
+    setConfirmExpiredCancellationRetry(false);
+  }
+
+  async function loadTransactionAudit(
+    transactionId: string
+  ): Promise<POSAudit | null> {
+    setAuditLoading(true);
+    try {
+      const { data, error } = await supabase.rpc(
+        "get_pos_transaction_audit",
+        { p_transaction_id: transactionId }
+      );
+      if (error) throw error;
+      const audit = data as POSAudit;
+      if (activeAuditTransactionId.current === transactionId) {
+        setTransactionAudit(audit);
+      }
+      return audit;
+    } catch (error) {
+      console.error("Unable to load POS transaction audit:", error);
+      showToast(
+        error instanceof Error
+          ? error.message
+          : "Unable to verify this POS transaction's history.",
+        "error"
+      );
+      return null;
+    } finally {
+      setAuditLoading(false);
+    }
+  }
+
+  async function startEditing(transaction: POSHistoryRow) {
+    const audit =
+      transactionAudit?.transaction_id === transaction.id
+        ? transactionAudit
+        : await loadTransactionAudit(transaction.id);
+    if (!audit) return;
+    if (audit.copied_to_iao) {
+      showToast(
+        "This POS transaction cannot be changed because it has already been copied to an IAO order.",
+        "error"
+      );
+      return;
+    }
+    setEditingTransaction({
+      id: transaction.id,
+      revisionNumber: transaction.revisionNumber,
+      receiptNumber: transaction.deliveryReceiptNumber,
+      transactionStatus: transaction.transactionStatus,
+      customerName: transaction.customerName,
+      customerAddress: transaction.customerAddress,
+      customerPhone: transaction.customerPhone,
+      items: transaction.items,
+    });
+    setCancellationTarget(null);
+  }
+
+  async function handleModificationSaved(
+    committedTotal: number,
+    wasReopening: boolean
+  ) {
+    setEditingTransaction(null);
+    setSelectedTransaction(null);
+    setTransactionAudit(null);
+    await refreshInventory();
+    setHistoryRefreshVersion((version) => version + 1);
+    showToast(
+      wasReopening
+        ? `Order corrected and reactivated with its original receipt. Committed total: ${formatPrice(committedTotal)}.`
+        : `Order corrected with its original receipt. Committed total: ${formatPrice(committedTotal)}.`
+    );
+  }
+
+  function printHistoricalRevision(
+    revision: POSAuditRevision
+  ) {
+    if (!selectedTransaction) return;
+    const snapshot = revision.snapshot;
+    const historical = mapHistoryRow(
+      snapshot.transaction,
+      snapshot.items,
+      selectedTransaction.cashierUsername,
+      selectedTransaction.cancelledByUsername
+    );
+    setReceipt({
+      ...historical,
+      revisionNumber: revision.revision_number,
+      historicalRevision:
+        revision.revision_number !== selectedTransaction.revisionNumber ||
+        snapshot.transaction.transaction_status !==
+          selectedTransaction.transactionStatus,
+    });
+    setPrintRequested(true);
   }
 
   return (
@@ -679,6 +1038,125 @@ export default function POSHistory() {
             </p>
           </div>
         </div>
+
+        {cancellationRecovery.status !== "missing" &&
+          cancellationRecovery.status !== "loading" &&
+          cancellationRecovery.status !== "auth-unavailable" && (
+          <section
+            aria-live="polite"
+            className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-950"
+          >
+            <h2 className="font-semibold">Cancellation recovery needed</h2>
+            <p className="mt-1 text-sm">
+              The previous cancellation may already have committed. Retrying sends the same request ID; if the server retained its idempotency record, it should return the prior result instead of applying cancellation again. Verify transaction history if the outcome remains unclear, and do not start another cancellation until this attempt is resolved.
+            </p>
+            {cancellationRecovery.status === "valid" && (
+              <p className="mt-1 text-xs text-amber-800">
+                Transaction {cancellationRecovery.attempt.transactionId} · saved {new Date(cancellationRecovery.attempt.createdAt).toLocaleString()}.
+              </p>
+            )}
+            {cancellationRecovery.status === "expired" && (
+              <p className="mt-1 text-xs text-amber-800">
+                This saved attempt is older than {POS_RETRY_ATTEMPT_TTL_MS / (60 * 60 * 1000)} hours. Automatic retry is disabled; continue only after reviewing the transaction history.
+              </p>
+            )}
+            {cancellationRecovery.status === "invalid" && (
+              <p className="mt-1 text-xs text-amber-800">
+                The saved attempt is malformed and cannot be retried. Review the transaction before discarding it.
+              </p>
+            )}
+            {cancellationRecovery.status === "unavailable" && (
+              <p className="mt-1 text-xs text-amber-800">
+                Session storage could not be read or updated. Recovery persistence cannot be confirmed.
+              </p>
+            )}
+            <div className="mt-3 flex flex-wrap gap-2">
+              {cancellationRecovery.status === "valid" && (
+                <Button
+                  type="button"
+                  onClick={() => void retryPreviousCancellation()}
+                  disabled={isCancelling}
+                >
+                  {isCancelling ? "Checking..." : "Retry previous cancellation"}
+                </Button>
+              )}
+              {cancellationRecovery.status === "expired" &&
+                !confirmExpiredCancellationRetry && (
+                <Button
+                  type="button"
+                  onClick={() => setConfirmExpiredCancellationRetry(true)}
+                  disabled={isCancelling}
+                >
+                  Continue recovery
+                </Button>
+              )}
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setConfirmCancellationDiscard(true)}
+                disabled={isCancelling}
+              >
+                Discard pending attempt
+              </Button>
+            </div>
+            {confirmExpiredCancellationRetry &&
+              cancellationRecovery.status === "expired" && (
+              <div className="mt-3 rounded-lg border border-amber-400 bg-white p-3">
+                <p className="text-sm">
+                  The server may have committed this cancellation. Continuing sends the exact saved request ID and reason; it cannot undo a completed cancellation.
+                </p>
+                <div className="mt-3 flex gap-2">
+                  <Button
+                    type="button"
+                    onClick={() => void continueExpiredCancellationRecovery()}
+                    disabled={isCancelling}
+                  >
+                    Continue recovery
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => setConfirmExpiredCancellationRetry(false)}
+                    disabled={isCancelling}
+                  >
+                    Keep pending
+                  </Button>
+                </div>
+              </div>
+            )}
+            {confirmCancellationDiscard && (
+              <div className="mt-3 rounded-lg border border-red-300 bg-white p-3">
+                <p className="text-sm text-red-900">
+                  Discarding removes only this tab’s retry key. It does not undo a cancellation, and the server may already have committed it. Verify the transaction in history before making another change.
+                </p>
+                <div className="mt-3 flex gap-2">
+                  <Button
+                    type="button"
+                    variant="danger"
+                    onClick={discardCancellationAttempt}
+                    disabled={isCancelling}
+                  >
+                    Confirm discard
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => setConfirmCancellationDiscard(false)}
+                    disabled={isCancelling}
+                  >
+                    Keep pending
+                  </Button>
+                </div>
+              </div>
+            )}
+          </section>
+        )}
+
+        {cancellationRecovery.status === "auth-unavailable" && (
+          <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+            The signed-in user could not be verified. Cancellation is disabled until the session can be checked.
+          </p>
+        )}
 
         {/* Summary Cards */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -954,7 +1432,9 @@ export default function POSHistory() {
                               ? "inline-flex items-center rounded-full bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700 ring-1 ring-inset ring-red-200"
                               : "inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-200"
                           }>
-                            {transaction.transactionStatus}
+                            {transaction.revisionNumber > 1
+                              ? `CORRECTED · ${transaction.transactionStatus}`
+                              : transaction.transactionStatus}
                           </span>
                         </td>
                         <td className="px-4 py-4 text-center">
@@ -966,15 +1446,6 @@ export default function POSHistory() {
                             >
                               View Details
                             </button>
-                            {transaction.transactionStatus === "COMPLETED" && (
-                              <button
-                                type="button"
-                                onClick={() => openCancellation(transaction)}
-                                className="text-xs font-semibold text-red-600 hover:text-red-700"
-                              >
-                                Cancel Order
-                              </button>
-                            )}
                           </div>
                         </td>
                       </tr>
@@ -1082,6 +1553,12 @@ export default function POSHistory() {
                 <span className="text-slate-500">Delivery Receipt</span>
                 <span className="text-right font-semibold text-emerald-700">{selectedTransaction.deliveryReceiptNumber}</span>
 
+                <span className="text-slate-500">Revision</span>
+                <span className="text-right text-slate-900">
+                  {selectedTransaction.revisionNumber}
+                  {selectedTransaction.revisionNumber > 1 ? " · Corrected" : " · Original"}
+                </span>
+
                 <span className="text-slate-500">Cashier</span>
                 <span className="text-right text-slate-900">{selectedTransaction.cashierUsername}</span>
 
@@ -1125,6 +1602,18 @@ export default function POSHistory() {
               </div>
             )}
 
+            {auditLoading && (
+              <p className="rounded-lg bg-slate-50 p-3 text-sm text-slate-500">
+                Verifying transaction history and IAO-copy status...
+              </p>
+            )}
+            {transactionAudit?.transaction_id === selectedTransaction.id &&
+              transactionAudit.copied_to_iao && (
+                <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+                  This POS transaction has already been copied to an IAO order. It cannot be cancelled or modified.
+                </div>
+              )}
+
             <div className="overflow-x-auto rounded-xl border border-slate-200">
               <table className="w-full min-w-[520px] border-collapse text-sm">
                 <thead className="border-b border-slate-200 bg-slate-50/80">
@@ -1154,11 +1643,76 @@ export default function POSHistory() {
 
             <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm">
               <div className="flex justify-between"><span className="text-slate-500">Subtotal</span><strong>{formatPrice(selectedTransaction.subtotal)}</strong></div>
-              <div className="flex justify-between"><span className="text-slate-500">Amount Received</span><strong>{formatPrice(selectedTransaction.amountReceived)}</strong></div>
-              <div className="flex justify-between"><span className="text-slate-500">Change</span><strong className="text-emerald-700">{formatPrice(selectedTransaction.changeAmount)}</strong></div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">
+                  Checkout Amount Estimate{selectedTransaction.revisionNumber > 1 ? " (unchanged)" : ""}
+                </span>
+                <strong>{formatPrice(selectedTransaction.amountReceived)}</strong>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">
+                  Estimated Change{selectedTransaction.revisionNumber > 1 ? " (unchanged)" : ""}
+                </span>
+                <strong className="text-emerald-700">{formatPrice(selectedTransaction.changeAmount)}</strong>
+              </div>
+              <p className="text-xs text-slate-500">
+                Checkout estimates only; actual payment is collected upon delivery.
+              </p>
               <div className="flex justify-between"><span className="text-slate-500">Payment Method</span><strong>{formatPaymentMethod(selectedTransaction.paymentMethod)}</strong></div>
               <div className="flex justify-between border-t border-slate-200 pt-2"><span className="text-slate-500">Status</span><strong>{selectedTransaction.transactionStatus}</strong></div>
             </div>
+
+            {transactionAudit?.transaction_id === selectedTransaction.id && (
+              <>
+                <section className="space-y-2 rounded-xl border border-slate-200 p-4">
+                  <h3 className="text-sm font-semibold text-slate-900">Saved revisions</h3>
+                  <div className="space-y-2">
+                    {transactionAudit.revisions.map((revision) => (
+                      <div key={revision.revision_number} className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 p-3 text-sm">
+                        <div>
+                          <strong>Revision {revision.revision_number}</strong>
+                          <span className="ml-2 text-slate-500">
+                            {new Date(revision.created_at).toLocaleString("en-PH")}
+                          </span>
+                          {revision.reason && <p className="text-xs text-slate-500">{revision.reason}</p>}
+                        </div>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          onClick={() => printHistoricalRevision(revision)}
+                        >
+                          Print copy
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                <section className="space-y-2 rounded-xl border border-slate-200 p-4">
+                  <h3 className="text-sm font-semibold text-slate-900">Lifecycle history</h3>
+                  <ol className="space-y-2 text-sm">
+                    {transactionAudit.events.map((event, index) => (
+                      <li key={`${event.event_type}-${event.created_at}-${index}`} className="rounded-lg bg-slate-50 p-3">
+                        <div className="flex flex-wrap justify-between gap-2">
+                          <strong>
+                            {event.event_type === "BASELINE"
+                              ? "Baseline captured · earlier lifecycle history unavailable"
+                              : `${event.event_type} · Revision ${event.revision_number}`}
+                          </strong>
+                          <span className="text-slate-500">{new Date(event.created_at).toLocaleString("en-PH")}</span>
+                        </div>
+                        {event.event_type === "BASELINE" && (
+                          <p className="mt-1 text-slate-600">
+                            This records the transaction state when lifecycle auditing was introduced; it does not assert how or when earlier status changes occurred.
+                          </p>
+                        )}
+                        {event.reason && <p className="mt-1 text-slate-600">{event.reason}</p>}
+                      </li>
+                    ))}
+                  </ol>
+                </section>
+              </>
+            )}
 
             <div className="flex flex-col-reverse justify-end gap-3 sm:flex-row">
               <Button
@@ -1176,13 +1730,45 @@ export default function POSHistory() {
                 Reprint Receipt
               </Button>
 
-              {selectedTransaction.transactionStatus === "COMPLETED" && (
+              {transactionAudit?.transaction_id === selectedTransaction.id &&
+                !transactionAudit.copied_to_iao &&
+                selectedTransaction.transactionStatus === "COMPLETED" && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => void startEditing(selectedTransaction)}
+                >
+                  Modify Order
+                </Button>
+              )}
+
+              {transactionAudit?.transaction_id === selectedTransaction.id &&
+                !transactionAudit.copied_to_iao &&
+                selectedTransaction.transactionStatus === "CANCELLED" && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => void startEditing(selectedTransaction)}
+                >
+                  Correct &amp; Reactivate
+                </Button>
+              )}
+
+              {transactionAudit?.transaction_id === selectedTransaction.id &&
+                !transactionAudit.copied_to_iao &&
+                selectedTransaction.transactionStatus === "COMPLETED" && (
                 <Button
                   type="button"
                   variant="danger"
                   onClick={() => openCancellation(selectedTransaction)}
                 >
                   Cancel Order
+                </Button>
+              )}
+
+              {auditLoading && (
+                <Button type="button" disabled>
+                  Checking...
                 </Button>
               )}
             </div>
@@ -1198,7 +1784,7 @@ export default function POSHistory() {
         {cancellationTarget && (
           <div className="space-y-4">
             <p className="text-sm leading-6 text-slate-600">
-              This order will be marked CANCELLED and all items will be returned to inventory. The original receipt will remain in history. Create a new order for any revised customer request.
+              Choose to leave this order fully cancelled, or correct it instead. A correction keeps the same transaction and receipt, recalculates current product prices, and adjusts inventory by the net quantity difference.
             </p>
 
             <Input
@@ -1224,16 +1810,40 @@ export default function POSHistory() {
 
               <Button
                 type="button"
+                variant="secondary"
+                onClick={() => {
+                  const target = cancellationTarget;
+                  closeCancellation();
+                  if (target) void startEditing(target);
+                }}
+                disabled={isCancelling}
+              >
+                Modify Order Instead
+              </Button>
+
+              <Button
+                type="button"
                 variant="danger"
                 onClick={() => void cancelTransaction()}
                 disabled={isCancelling}
               >
-                {isCancelling ? "Cancelling..." : "Cancel Order"}
+                {isCancelling ? "Cancelling..." : "Cancel Only"}
               </Button>
             </div>
           </div>
         )}
       </Modal>
+
+      {editingTransaction && (
+        <POSOrderEditor
+          key={`${editingTransaction.id}:${editingTransaction.revisionNumber}`}
+          transaction={editingTransaction}
+          onClose={() => setEditingTransaction(null)}
+          onSaved={(committedTotal, reopened) =>
+            void handleModificationSaved(committedTotal, reopened)
+          }
+        />
+      )}
 
       <DeliveryReceiptPrint receipt={receipt} />
     </div>

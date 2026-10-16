@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import Button from "../../components/ui/Button";
@@ -9,6 +9,20 @@ import CustomerOutletSearch from "../../components/pos/CustomerOutletSearch";
 import { useToast } from "../../context/ToastContext";
 import { useInventory } from "../../hooks/useInventory";
 import { supabase } from "../../lib/supabase";
+import {
+  canonicalizeCheckoutPayload,
+  checkoutRetryStorageKey,
+  clearSessionAttempt,
+  createRetryAttemptTimestamp,
+  parseCheckoutPayload,
+  POS_RETRY_ATTEMPT_VERSION,
+  POS_RETRY_ATTEMPT_TTL_MS,
+  readCheckoutAttempt,
+  type CheckoutPayload,
+  type CheckoutRetryAttempt,
+  type StoredAttemptResult,
+  writeSessionAttempt,
+} from "../../utils/posRetryRecovery";
 
 import type { Outlet, Product } from "../../types/inventory";
 
@@ -53,6 +67,10 @@ const categoryOrder = [
   "Ice Buko",
   "Ice Lolly",
 ];
+
+type CheckoutRecoveryStatus =
+  | StoredAttemptResult<CheckoutRetryAttempt>
+  | { status: "loading" | "auth-unavailable" };
 
 export default function POS() {
   const { products, inventory, outlets } = useInventory();
@@ -108,6 +126,19 @@ export default function POS() {
 
   const [paymentMethod, setPaymentMethod] =
     useState("CASH");
+  const [saleAreaCode, setSaleAreaCode] =
+    useState("");
+  const [checkoutUserId, setCheckoutUserId] =
+    useState<string | null>(null);
+  const checkoutUserIdRef = useRef<string | null>(null);
+  const checkoutAuthEventVersion = useRef(0);
+  const [checkoutRecovery, setCheckoutRecovery] =
+    useState<CheckoutRecoveryStatus>({ status: "loading" });
+  const [confirmCheckoutDiscard, setConfirmCheckoutDiscard] =
+    useState(false);
+  const [confirmExpiredCheckoutRetry, setConfirmExpiredCheckoutRetry] =
+    useState(false);
+  const checkoutSubmissionLock = useRef(false);
 
   /*
    * =========================================================
@@ -129,6 +160,76 @@ export default function POS() {
 
   const [receipt, setReceipt] =
     useState<ReceiptData | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    async function loadAssignedArea() {
+      const { data, error } = await supabase.rpc(
+        "get_current_user_area_code"
+      );
+      if (!active) return;
+      if (error) {
+        console.error("Unable to load the default POS area:", error);
+        return;
+      }
+      if (data === "IAO" || data === "CBR" || data === "EFT") {
+        setSaleAreaCode(data);
+      }
+    }
+    void loadAssignedArea();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    const { data: authListener } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        if (!active) return;
+        checkoutAuthEventVersion.current += 1;
+        checkoutUserIdRef.current = session?.user.id ?? null;
+        if (!session?.user) {
+          setCheckoutUserId(null);
+          setCheckoutRecovery({ status: "auth-unavailable" });
+          return;
+        }
+        setCheckoutUserId(session.user.id);
+        setCheckoutRecovery(readCheckoutAttempt(session.user.id));
+      }
+    );
+    async function loadCheckoutRecovery() {
+      const authEventVersion = checkoutAuthEventVersion.current;
+      try {
+        const {
+          data: { user },
+          error,
+        } = await supabase.auth.getUser();
+        if (!active) return;
+        if (authEventVersion !== checkoutAuthEventVersion.current) return;
+        if (error || !user) {
+          checkoutUserIdRef.current = null;
+          setCheckoutRecovery({ status: "auth-unavailable" });
+          return;
+        }
+
+        checkoutUserIdRef.current = user.id;
+        setCheckoutUserId(user.id);
+        setCheckoutRecovery(readCheckoutAttempt(user.id));
+      } catch {
+        if (active && authEventVersion === checkoutAuthEventVersion.current) {
+          checkoutUserIdRef.current = null;
+          setCheckoutRecovery({ status: "auth-unavailable" });
+        }
+      }
+    }
+
+    void loadCheckoutRecovery();
+    return () => {
+      active = false;
+      authListener.subscription.unsubscribe();
+    };
+  }, []);
 
   /*
    * =========================================================
@@ -506,6 +607,13 @@ export default function POS() {
     if (cart.length === 0) {
       return;
     }
+    if (checkoutRecovery.status !== "missing") {
+      showToast(
+        "Resolve the saved checkout attempt before opening a new checkout.",
+        "error"
+      );
+      return;
+    }
 
     setAmountReceived("");
     setCheckoutOpen(true);
@@ -565,16 +673,57 @@ export default function POS() {
    */
 
   async function completeSale() {
-    if (cart.length === 0) {
+    if (checkoutSubmissionLock.current || isSubmitting) return;
+    if (checkoutRecovery.status === "loading") {
+      showToast("Checkout recovery is still loading. Please wait.", "error");
+      return;
+    }
+    if (
+      checkoutRecovery.status === "auth-unavailable" ||
+      !checkoutUserId ||
+      checkoutUserId !== checkoutUserIdRef.current
+    ) {
+      showToast("Unable to verify this session for safe checkout recovery.", "error");
+      return;
+    }
+    if (checkoutRecovery.status !== "missing") {
       showToast(
-        "Add at least one product to the cart.",
+        "Resolve the pending checkout attempt before starting another sale. Retry it or explicitly discard it first.",
         "error"
       );
       return;
     }
 
-    if (isSubmitting) {
+    const payload = getCurrentCheckoutPayload();
+    if (!payload) return;
+    const attempt: CheckoutRetryAttempt = {
+      version: POS_RETRY_ATTEMPT_VERSION,
+      requestId: crypto.randomUUID(),
+      userId: checkoutUserId,
+      createdAt: createRetryAttemptTimestamp(),
+      canonicalPayload: canonicalizeCheckoutPayload(payload),
+    };
+    const storageKey = checkoutRetryStorageKey(checkoutUserId);
+    if (!writeSessionAttempt(storageKey, attempt)) {
+      setCheckoutRecovery({ status: "unavailable" });
+      showToast(
+        "Session storage is unavailable. The checkout was not sent because reload-safe recovery cannot be guaranteed.",
+        "error"
+      );
       return;
+    }
+
+    setCheckoutRecovery({ status: "valid", attempt });
+    await submitCheckoutAttempt(attempt, payload, false);
+  }
+
+  function getCurrentCheckoutPayload(): CheckoutPayload | null {
+    if (cart.length === 0) {
+      showToast(
+        "Add at least one product to the cart.",
+        "error"
+      );
+      return null;
     }
 
     if (
@@ -586,69 +735,147 @@ export default function POS() {
         "Please complete the customer details.",
         "error"
       );
-      return;
+      return null;
+    }
+
+    const areaCode = saleAreaCode.trim().toUpperCase();
+    if (areaCode !== "IAO" && areaCode !== "CBR" && areaCode !== "EFT") {
+      showToast("Select a POS area for this receipt.", "error");
+      return null;
     }
 
     if (!isCheque) {
       if (!Number.isFinite(parsedAmountReceived)) {
         showToast(
-          "Please enter the amount received.",
+          "Please enter a checkout amount estimate.",
           "error"
         );
-        return;
+        return null;
       }
 
       if (parsedAmountReceived < subtotal) {
         showToast(
-          `Amount received must be at least ${formatPrice(
+          `Checkout amount estimate must be at least ${formatPrice(
             subtotal
           )}.`,
           "error"
         );
-        return;
+        return null;
       }
     }
 
+    const items = Array.from(
+      cart.reduce((items, item) => {
+        items.set(
+          item.product.id,
+          (items.get(item.product.id) ?? 0) + item.quantity
+        );
+        return items;
+      }, new Map<string, number>())
+    )
+      .map(([product_id, quantity]) => ({ product_id, quantity }))
+      .sort((left, right) => left.product_id.localeCompare(right.product_id));
+    const normalizedPaymentMethod = paymentMethod.trim().toUpperCase();
+    if (normalizedPaymentMethod !== "CASH" && normalizedPaymentMethod !== "CHEQUE") {
+      showToast("Select a valid payment method.", "error");
+      return null;
+    }
+    const checkoutPayload: CheckoutPayload = {
+      customer_name: customerName.trim(),
+      customer_address: customerAddress.trim(),
+      customer_phone: customerPhone.trim(),
+      amount_received:
+        Math.round(effectiveAmountReceived * 100) / 100,
+      payment_method: normalizedPaymentMethod,
+      area_code: areaCode,
+      items,
+    };
+    if (
+      !Number.isFinite(checkoutPayload.amount_received) ||
+      checkoutPayload.amount_received < 0
+    ) {
+      showToast("Enter a valid checkout amount estimate.", "error");
+      return null;
+    }
+    return checkoutPayload;
+  }
+
+  async function retryCheckoutAttempt() {
+    if (
+      checkoutSubmissionLock.current ||
+      checkoutRecovery.status !== "valid" ||
+      checkoutRecovery.attempt.userId !== checkoutUserId ||
+      checkoutRecovery.attempt.userId !== checkoutUserIdRef.current
+    ) {
+      return;
+    }
+    const latestAttempt = readCheckoutAttempt(checkoutUserId);
+    setCheckoutRecovery(latestAttempt);
+    if (latestAttempt.status !== "valid") return;
+    const payload = parseCheckoutPayload(latestAttempt.attempt.canonicalPayload);
+    if (!payload) {
+      setCheckoutRecovery({ status: "invalid" });
+      showToast("The saved checkout attempt is invalid and cannot be retried.", "error");
+      return;
+    }
+    await submitCheckoutAttempt(latestAttempt.attempt, payload, true);
+  }
+
+  async function continueExpiredCheckoutRecovery() {
+    if (
+      checkoutSubmissionLock.current ||
+      checkoutRecovery.status !== "expired" ||
+      checkoutRecovery.attempt.userId !== checkoutUserId ||
+      checkoutRecovery.attempt.userId !== checkoutUserIdRef.current
+    ) {
+      return;
+    }
+    const latestAttempt = readCheckoutAttempt(checkoutUserId);
+    setCheckoutRecovery(latestAttempt);
+    if (latestAttempt.status !== "expired") return;
+    const payload = parseCheckoutPayload(latestAttempt.attempt.canonicalPayload);
+    if (!payload) {
+      setCheckoutRecovery({ status: "invalid" });
+      return;
+    }
+    setConfirmExpiredCheckoutRetry(false);
+    await submitCheckoutAttempt(latestAttempt.attempt, payload, true);
+  }
+
+  async function submitCheckoutAttempt(
+    attempt: CheckoutRetryAttempt,
+    payload: CheckoutPayload,
+    isRecovery: boolean
+  ) {
+    if (
+      checkoutSubmissionLock.current ||
+      isSubmitting ||
+      !checkoutUserId ||
+      attempt.userId !== checkoutUserIdRef.current ||
+      attempt.userId !== checkoutUserId
+    ) return;
+    checkoutSubmissionLock.current = true;
     setIsSubmitting(true);
 
     try {
       const { data, error } =
         await supabase.rpc(
-          "create_pos_transaction",
+          "create_pos_transaction_for_area",
           {
-            p_customer_name:
-              customerName.trim(),
-
-            p_customer_address:
-              customerAddress.trim(),
-
-            p_customer_phone:
-              customerPhone.trim(),
-
-            p_amount_received:
-              effectiveAmountReceived,
-
-            p_payment_method:
-              paymentMethod,
-
-            p_items: cart.map(
-              (item) => ({
-                product_id:
-                  item.product.id,
-
-                quantity:
-                  item.quantity,
-              })
-            ),
+            p_customer_name: payload.customer_name,
+            p_customer_address: payload.customer_address,
+            p_customer_phone: payload.customer_phone,
+            p_amount_received: payload.amount_received,
+            p_payment_method: payload.payment_method,
+            p_items: payload.items,
+            p_area_code: payload.area_code,
+            p_request_id: attempt.requestId,
           }
         );
 
       if (error) {
-        console.error(
-          "POS transaction failed:",
-          error
-        );
-
+        setCheckoutOpen(false);
+        console.error("POS transaction failed:", error);
         showToast(
           error.message ||
             "Unable to complete the sale.",
@@ -658,26 +885,97 @@ export default function POS() {
         return;
       }
 
-      const transactionResult =
-        data as {
-          display_receipt_number?: string;
-          subtotal?: number;
-          total_amount?: number;
-          amount_received?: number;
-          change_amount?: number;
-          payment_method?: string;
-        } | null;
-
-      const receiptNumber =
-        transactionResult
-          ?.display_receipt_number;
-
-      if (!receiptNumber) {
+      if (
+        typeof data !== "object" ||
+        data === null ||
+        !("transaction_id" in data) ||
+        !("display_receipt_number" in data) ||
+        !("subtotal" in data) ||
+        !("amount_received" in data) ||
+        !("change_amount" in data) ||
+        !("payment_method" in data) ||
+        !("transaction_status" in data) ||
+        typeof data.transaction_id !== "string" ||
+        data.transaction_id.length === 0 ||
+        typeof data.display_receipt_number !== "string" ||
+        data.display_receipt_number.length === 0 ||
+        typeof data.subtotal !== "number" ||
+        !Number.isFinite(data.subtotal) ||
+        typeof data.amount_received !== "number" ||
+        !Number.isFinite(data.amount_received) ||
+        typeof data.change_amount !== "number" ||
+        !Number.isFinite(data.change_amount) ||
+        typeof data.payment_method !== "string" ||
+        data.transaction_status !== "COMPLETED"
+      ) {
+        setCheckoutOpen(false);
         showToast(
-          "Sale completed without a receipt number.",
+          "The checkout may have completed, but its confirmation was incomplete. Retrying sends the same request ID; the server can return the earlier result only if it retained the idempotency record. Check POS History before discarding this attempt.",
           "error"
         );
+        return;
+      }
+      const transactionResult = data;
+      const receiptNumber = transactionResult.display_receipt_number;
+      const cleared = clearSessionAttempt(
+        checkoutRetryStorageKey(attempt.userId)
+      );
+      if (checkoutUserIdRef.current !== attempt.userId) return;
+      if (cleared) {
+        setCheckoutRecovery({ status: "missing" });
+        setConfirmCheckoutDiscard(false);
+      }
 
+      if (isRecovery) {
+        if (cleared) {
+          const currentItems = Array.from(
+            cart.reduce((items, item) => {
+              items.set(
+                item.product.id,
+                (items.get(item.product.id) ?? 0) + item.quantity
+              );
+              return items;
+            }, new Map<string, number>())
+          )
+            .map(([product_id, quantity]) => ({ product_id, quantity }))
+            .sort((left, right) =>
+              left.product_id.localeCompare(right.product_id)
+            );
+          const currentPaymentMethod = paymentMethod.trim().toUpperCase();
+          const currentAreaCode = saleAreaCode.trim().toUpperCase();
+          const currentAmountReceived =
+            currentPaymentMethod === "CHEQUE"
+              ? subtotal
+              : Number(amountReceived);
+          if (
+            currentItems.length > 0 &&
+            JSON.stringify(currentItems) === JSON.stringify(payload.items) &&
+            customerName.trim() === payload.customer_name &&
+            customerAddress.trim() === payload.customer_address &&
+            customerPhone.trim() === payload.customer_phone &&
+            currentPaymentMethod === payload.payment_method &&
+            currentAreaCode === payload.area_code &&
+            Number.isFinite(currentAmountReceived) &&
+            Math.round(currentAmountReceived * 100) / 100 ===
+              payload.amount_received
+          ) {
+            clearCart();
+            setCustomerName("");
+            setCustomerAddress("");
+            setCustomerPhone("");
+            setSelectedOutlet(null);
+            setAmountReceived("");
+            setPaymentMethod("CASH");
+          }
+          showToast(
+            `Checkout confirmed: ${receiptNumber}. The receipt is available in POS History.`
+          );
+        } else {
+          showToast(
+            `Checkout confirmed: ${receiptNumber}. The retry record could not be cleared; retry it again before starting another sale.`,
+            "error"
+          );
+        }
         return;
       }
 
@@ -687,16 +985,6 @@ export default function POS() {
       const receiptItems = [
         ...cart,
       ];
-
-      const finalSubtotal =
-        Number(
-          transactionResult?.subtotal
-        );
-
-      const finalChange =
-        Number(
-          transactionResult?.change_amount
-        );
 
       clearCart();
 
@@ -715,34 +1003,18 @@ export default function POS() {
         customerPhone:
           customerPhone.trim(),
 
-        amountReceived:
-          Number(
-            transactionResult?.amount_received
-          ) || effectiveAmountReceived,
+        amountReceived: transactionResult.amount_received,
 
-        paymentMethod:
-          transactionResult
-            ?.payment_method ||
-          paymentMethod,
+        paymentMethod: transactionResult.payment_method,
 
         createdAt:
           new Date().toISOString(),
 
         items: receiptItems,
 
-        subtotal:
-          Number.isFinite(
-            finalSubtotal
-          )
-            ? finalSubtotal
-            : subtotal,
+        subtotal: transactionResult.subtotal,
 
-        changeAmount:
-          Number.isFinite(
-            finalChange
-          )
-            ? finalChange
-            : calculatedChange,
+        changeAmount: transactionResult.change_amount,
       });
 
       /*
@@ -760,18 +1032,32 @@ export default function POS() {
         `Sale completed: ${receiptNumber}`
       );
     } catch (error) {
-      console.error(
-        "Unexpected POS error:",
-        error
-      );
-
+      setCheckoutOpen(false);
+      console.error("Unexpected POS error:", error);
       showToast(
-        "An unexpected error occurred while completing the sale.",
+        "Checkout confirmation is uncertain. The saved attempt is retained; retry it before starting another sale.",
         "error"
       );
     } finally {
+      checkoutSubmissionLock.current = false;
       setIsSubmitting(false);
     }
+  }
+
+  function discardCheckoutAttempt() {
+    if (
+      checkoutSubmissionLock.current ||
+      !checkoutUserId ||
+      checkoutUserId !== checkoutUserIdRef.current
+    ) return;
+    if (!clearSessionAttempt(checkoutRetryStorageKey(checkoutUserId))) {
+      setCheckoutRecovery({ status: "unavailable" });
+      showToast("Unable to remove the saved checkout attempt from this tab.", "error");
+      return;
+    }
+    setCheckoutRecovery({ status: "missing" });
+    setConfirmCheckoutDiscard(false);
+    setConfirmExpiredCheckoutRetry(false);
   }
 
   /*
@@ -843,6 +1129,137 @@ export default function POS() {
           </div>
 
         </div>
+
+        {checkoutRecovery.status !== "missing" &&
+          checkoutRecovery.status !== "loading" &&
+          checkoutRecovery.status !== "auth-unavailable" && (
+          <section
+            aria-live="polite"
+            className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-950"
+          >
+            <h2 className="font-semibold">Checkout recovery needed</h2>
+            <p className="mt-1 text-sm">
+              The previous checkout may already have committed. Do not start another sale until you retry the saved request or explicitly discard it.
+            </p>
+            {checkoutRecovery.status === "valid" && (
+              <p className="mt-1 text-xs text-amber-800">
+                Saved attempt created {new Date(checkoutRecovery.attempt.createdAt).toLocaleString()}.
+              </p>
+            )}
+            {checkoutRecovery.status === "expired" && (
+              <p className="mt-1 text-xs text-amber-800">
+                This saved attempt is older than {POS_RETRY_ATTEMPT_TTL_MS / (60 * 60 * 1000)} hours. Retrying is an explicit recovery action; automatic retry is disabled.
+              </p>
+            )}
+            {checkoutRecovery.status === "invalid" && (
+              <p className="mt-1 text-xs text-amber-800">
+                The saved attempt is malformed and cannot be retried. Check POS History before discarding it.
+              </p>
+            )}
+            {checkoutRecovery.status === "unavailable" && (
+              <p className="mt-1 text-xs text-amber-800">
+                Session storage could not be read or updated. Safe retry persistence cannot be confirmed.
+              </p>
+            )}
+            <div className="mt-3 flex flex-wrap gap-2">
+              {checkoutRecovery.status === "valid" && (
+                <Button
+                  type="button"
+                  onClick={() => void retryCheckoutAttempt()}
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting ? "Checking..." : "Retry previous checkout"}
+                </Button>
+              )}
+              {checkoutRecovery.status === "expired" && !confirmExpiredCheckoutRetry && (
+                <Button
+                  type="button"
+                  onClick={() => setConfirmExpiredCheckoutRetry(true)}
+                  disabled={isSubmitting}
+                >
+                  Continue recovery
+                </Button>
+              )}
+              {(checkoutRecovery.status === "valid" ||
+                checkoutRecovery.status === "expired") && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setConfirmCheckoutDiscard(true)}
+                  disabled={isSubmitting}
+                >
+                  Discard pending attempt
+                </Button>
+              )}
+              {(checkoutRecovery.status === "invalid" ||
+                checkoutRecovery.status === "unavailable") && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setConfirmCheckoutDiscard(true)}
+                  disabled={isSubmitting}
+                >
+                  Discard pending attempt
+                </Button>
+              )}
+            </div>
+            {confirmExpiredCheckoutRetry && checkoutRecovery.status === "expired" && (
+              <div className="mt-3 rounded-lg border border-amber-400 bg-white p-3">
+                <p className="text-sm">
+                  Retrying will send the exact saved request ID and payload. The server may return the earlier result if it committed and retained the request record.
+                </p>
+                <div className="mt-3 flex gap-2">
+                  <Button
+                    type="button"
+                    onClick={() => void continueExpiredCheckoutRecovery()}
+                    disabled={isSubmitting}
+                  >
+                    Continue recovery
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => setConfirmExpiredCheckoutRetry(false)}
+                    disabled={isSubmitting}
+                  >
+                    Keep pending
+                  </Button>
+                </div>
+              </div>
+            )}
+            {confirmCheckoutDiscard && (
+              <div className="mt-3 rounded-lg border border-red-300 bg-white p-3">
+                <p className="text-sm text-red-900">
+                  Discarding removes this tab’s retry key only. It does not cancel or undo a server transaction, and the earlier checkout may already exist. Check POS History before starting another sale.
+                </p>
+                <div className="mt-3 flex gap-2">
+                  <Button
+                    type="button"
+                    variant="danger"
+                    onClick={discardCheckoutAttempt}
+                    disabled={isSubmitting}
+                  >
+                    Confirm discard
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => setConfirmCheckoutDiscard(false)}
+                    disabled={isSubmitting}
+                  >
+                    Keep pending
+                  </Button>
+                </div>
+              </div>
+            )}
+          </section>
+        )}
+
+        {checkoutRecovery.status === "auth-unavailable" && (
+          <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+            The signed-in user could not be verified. Checkout is disabled until the session can be checked.
+          </p>
+        )}
 
         {/* ===================================================
             POS LAYOUT
@@ -1615,6 +2032,19 @@ export default function POS() {
 
             <div className="space-y-5 p-6">
 
+              <Select
+                label="Receipt area"
+                value={saleAreaCode}
+                onChange={(event) => setSaleAreaCode(event.target.value)}
+                disabled={isSubmitting}
+                options={[
+                  { label: "Select POS area", value: "" },
+                  { label: "IAO", value: "IAO" },
+                  { label: "CBR", value: "CBR" },
+                  { label: "EFT", value: "EFT" },
+                ]}
+              />
+
               {/* Customer Details */}
 
               <div>
@@ -1675,7 +2105,7 @@ export default function POS() {
 
                   {!isCheque && (
                     <Input
-                      label="Amount Received"
+                      label="Checkout Amount Estimate"
                       type="number"
                       min="0"
                       step="0.01"
@@ -1716,9 +2146,7 @@ export default function POS() {
                 <div className="mt-3 flex justify-between text-sm">
 
                   <span className="text-slate-500">
-                    {isCheque
-                      ? "Payment Amount"
-                      : "Amount Received"}
+                    Checkout Amount Estimate
                   </span>
 
                   <span className="font-semibold text-slate-900">
@@ -1738,7 +2166,7 @@ export default function POS() {
                 <div className="mt-3 flex justify-between border-t border-slate-200 pt-3">
 
                   <span className="font-medium text-slate-700">
-                    Change
+                    Estimated Change
                   </span>
 
                   <span
@@ -1755,6 +2183,10 @@ export default function POS() {
 
                 </div>
 
+                <p className="mt-3 text-xs text-slate-500">
+                  Estimates only. Actual payment is collected upon delivery.
+                </p>
+
               </div>
 
               {!isCheque &&
@@ -1762,7 +2194,7 @@ export default function POS() {
                 "" &&
                 !amountIsSufficient && (
                   <p className="text-sm font-medium text-red-600">
-                    Amount received must
+                    Checkout amount estimate must
                     be at least{" "}
                     {formatPrice(
                       subtotal
@@ -1975,7 +2407,7 @@ export default function POS() {
               <div className="flex justify-between">
 
                 <span className="text-slate-500">
-                  Amount Received
+                  Checkout Amount Estimate
                 </span>
 
                 <span className="font-semibold text-slate-900">
@@ -1989,7 +2421,7 @@ export default function POS() {
               <div className="flex justify-between">
 
                 <span className="text-slate-500">
-                  Change
+                  Estimated Change
                 </span>
 
                 <span className="font-semibold text-emerald-700">
@@ -1999,6 +2431,10 @@ export default function POS() {
                 </span>
 
               </div>
+
+              <p className="text-xs text-slate-500">
+                Estimates only. Actual payment is collected upon delivery.
+              </p>
 
               <div className="flex justify-between">
 
@@ -2181,18 +2617,22 @@ export default function POS() {
             </div>
 
             <div className="dr-total-row">
-              <span>Amount Received</span>
+              <span>Checkout Amount Estimate</span>
               <strong>
                 {formatPrice(receipt.amountReceived)}
               </strong>
             </div>
 
             <div className="dr-total-row">
-              <span>Change</span>
+              <span>Estimated Change</span>
               <strong>
                 {formatPrice(receipt.changeAmount)}
               </strong>
             </div>
+
+            <p className="text-xs text-slate-500">
+              Estimates only. Actual payment is collected upon delivery.
+            </p>
 
             <div className="dr-total-row">
               <span>Payment</span>

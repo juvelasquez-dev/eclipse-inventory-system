@@ -22,6 +22,8 @@ export interface ReceiptData {
   cancelledAt?: string | null;
   cancelledByUsername?: string | null;
   cancellationReason?: string | null;
+  revisionNumber?: number;
+  historicalRevision?: boolean;
 }
 
 interface DeliveryReceiptPrintProps {
@@ -183,12 +185,16 @@ export default function DeliveryReceiptPrint({
           <strong>{formatPrice(receipt.subtotal)}</strong>
         </div>
         <div className="dr-total-row">
-          <span>Amount Received</span>
+          <span>Checkout Amount Estimate</span>
           <strong>{formatPrice(receipt.amountReceived)}</strong>
         </div>
         <div className="dr-total-row">
-          <span>Change</span>
+          <span>Estimated Change</span>
           <strong>{formatPrice(receipt.changeAmount)}</strong>
+        </div>
+        <div className="dr-total-row">
+          <span>Payment</span>
+          <strong>Actual payment is collected upon delivery; these are estimates only.</strong>
         </div>
         <div className="dr-total-row">
           <span>Payment</span>
