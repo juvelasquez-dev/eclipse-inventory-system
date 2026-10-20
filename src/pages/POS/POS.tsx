@@ -5,10 +5,17 @@ import Button from "../../components/ui/Button";
 import Input from "../../components/ui/Input";
 import Select from "../../components/ui/Select";
 import CustomerOutletSearch from "../../components/pos/CustomerOutletSearch";
+import A5DeliveryReceiptPrint from "../../components/pos/A5DeliveryReceiptPrint";
+import type { ReceiptData } from "../../components/pos/DeliveryReceiptPrint";
 
 import { useToast } from "../../context/ToastContext";
 import { useInventory } from "../../hooks/useInventory";
 import { supabase } from "../../lib/supabase";
+import { printReceipt as printReceiptInFormat } from "../../utils/receiptPrinting";
+import {
+  getA5ReceiptCatalogIssue,
+  getA5ReceiptDataIssue,
+} from "../../utils/a5DeliveryReceipt";
 import {
   canonicalizeCheckoutPayload,
   checkoutRetryStorageKey,
@@ -31,17 +38,109 @@ interface CartItem {
   quantity: number;
 }
 
-interface ReceiptData {
-  deliveryReceiptNumber: string;
-  customerName: string;
-  customerAddress: string;
-  customerPhone: string;
-  amountReceived: number;
-  paymentMethod: string;
-  createdAt: string;
-  items: CartItem[];
-  subtotal: number;
-  changeAmount: number;
+interface SavedPOSTransactionRow {
+  customer_name: string | null;
+  customer_address: string | null;
+  customer_phone: string | null;
+  subtotal: number | string;
+  amount_received: number | string;
+  change_amount: number | string;
+  payment_method: string | null;
+  transaction_status: string | null;
+  created_at: string;
+}
+
+interface SavedPOSTransactionItemRow {
+  product_id: string;
+  product_name_snapshot: string;
+  product_code_snapshot: string;
+  unit_snapshot: string;
+  unit_price: number | string;
+  quantity: number;
+}
+
+async function loadSavedReceiptData(
+  transactionId: string,
+  products: Product[]
+): Promise<Partial<ReceiptData>> {
+  const [transactionResult, itemResult] = await Promise.all([
+    supabase
+      .from("pos_transactions")
+      .select(
+        "customer_name, customer_address, customer_phone, subtotal, amount_received, change_amount, payment_method, transaction_status, created_at"
+      )
+      .eq("id", transactionId)
+      .maybeSingle(),
+    supabase
+      .from("pos_transaction_items")
+      .select(
+        "product_id, product_name_snapshot, product_code_snapshot, unit_snapshot, unit_price, quantity"
+      )
+      .eq("transaction_id", transactionId),
+  ]);
+
+  if (transactionResult.error) {
+    throw new Error(
+      `Unable to reload the saved POS transaction: ${transactionResult.error.message}`
+    );
+  }
+  if (itemResult.error) {
+    throw new Error(
+      `Unable to reload the saved POS items: ${itemResult.error.message}`
+    );
+  }
+  const transaction = transactionResult.data as SavedPOSTransactionRow | null;
+  const savedItems =
+    itemResult.data as SavedPOSTransactionItemRow[] | null;
+  if (!transaction || !savedItems || savedItems.length === 0) {
+    throw new Error("The saved POS receipt details were not found.");
+  }
+
+  const items: CartItem[] = savedItems.map((item) => {
+    const catalogProduct = products.find(
+      (product) => product.id === item.product_id
+    );
+    return {
+      product: {
+        id: item.product_id,
+        name: item.product_name_snapshot,
+        code: item.product_code_snapshot,
+        category: catalogProduct?.category ?? "",
+        unit: item.unit_snapshot,
+        price: Number(item.unit_price),
+        minimumStock: catalogProduct?.minimumStock ?? 0,
+      },
+      quantity: Number(item.quantity),
+    };
+  });
+  const subtotal = Number(transaction.subtotal);
+  const amountReceived = Number(transaction.amount_received);
+  const changeAmount = Number(transaction.change_amount);
+  if (
+    !Number.isFinite(subtotal) ||
+    !Number.isFinite(amountReceived) ||
+    !Number.isFinite(changeAmount) ||
+    items.some(
+      (item) =>
+        !Number.isFinite(item.product.price) ||
+        !Number.isFinite(item.quantity)
+    )
+  ) {
+    throw new Error("The saved POS receipt contains invalid numeric values.");
+  }
+
+  return {
+    customerName: transaction.customer_name ?? "",
+    customerAddress: transaction.customer_address ?? "",
+    customerPhone: transaction.customer_phone ?? "",
+    createdAt: transaction.created_at,
+    items,
+    subtotal,
+    amountReceived,
+    changeAmount,
+    paymentMethod: transaction.payment_method ?? "",
+    transactionStatus: transaction.transaction_status ?? "",
+  };
 }
 
 /*
@@ -73,8 +172,20 @@ type CheckoutRecoveryStatus =
   | { status: "loading" | "auth-unavailable" };
 
 export default function POS() {
-  const { products, inventory, outlets } = useInventory();
+  const {
+    products,
+    inventory,
+    outlets,
+    isLoading: catalogLoading,
+    loadError: catalogLoadError,
+  } = useInventory();
   const { showToast } = useToast();
+  const a5CatalogIssue = getA5ReceiptCatalogIssue(
+    products,
+    inventory,
+    catalogLoading,
+    catalogLoadError
+  );
 
   /*
    * =========================================================
@@ -160,6 +271,8 @@ export default function POS() {
 
   const [receipt, setReceipt] =
     useState<ReceiptData | null>(null);
+  const a5PrintIssue = a5CatalogIssue ??
+    (receipt ? getA5ReceiptDataIssue(receipt, products, inventory) : null);
 
   useEffect(() => {
     let active = true;
@@ -985,15 +1098,24 @@ export default function POS() {
       const receiptItems = [
         ...cart,
       ];
+      let savedReceiptData: Partial<ReceiptData> = {};
+      let savedReceiptIssue: string | null = null;
+      try {
+        savedReceiptData = await loadSavedReceiptData(
+          transactionResult.transaction_id,
+          products
+        );
+      } catch (error) {
+        console.error("Unable to reload completed POS receipt data:", error);
+        savedReceiptIssue =
+          "Saved receipt details could not be reloaded. Use POS History to print the A5 receipt.";
+      }
 
       clearCart();
 
       setCheckoutOpen(false);
 
       setReceipt({
-        deliveryReceiptNumber:
-          receiptNumber,
-
         customerName:
           customerName.trim(),
 
@@ -1010,11 +1132,15 @@ export default function POS() {
         createdAt:
           new Date().toISOString(),
 
-        items: receiptItems,
+        items: savedReceiptData.items ?? receiptItems,
 
-        subtotal: transactionResult.subtotal,
+        subtotal: savedReceiptData.subtotal ?? transactionResult.subtotal,
 
-        changeAmount: transactionResult.change_amount,
+        changeAmount:
+          savedReceiptData.changeAmount ?? transactionResult.change_amount,
+        ...savedReceiptData,
+        deliveryReceiptNumber: receiptNumber,
+        a5PrintIssue: savedReceiptIssue,
       });
 
       /*
@@ -1029,7 +1155,9 @@ export default function POS() {
       setPaymentMethod("CASH");
 
       showToast(
-        `Sale completed: ${receiptNumber}`
+        savedReceiptIssue
+          ? `Sale completed: ${receiptNumber}. POS History has the saved details for A5 printing.`
+          : `Sale completed: ${receiptNumber}`
       );
     } catch (error) {
       setCheckoutOpen(false);
@@ -1070,8 +1198,13 @@ export default function POS() {
     setReceipt(null);
   }
 
-  function printReceipt() {
-    window.print();
+  function printReceipt(format: "thermal" | "a4-two-copy") {
+    try {
+      printReceiptInFormat(format);
+    } catch (error) {
+      console.error(`Unable to open the ${format} receipt print dialog:`, error);
+      showToast("The print dialog could not be opened. The completed sale is unchanged.", "error");
+    }
   }
 
   /*
@@ -2482,14 +2615,28 @@ export default function POS() {
 
               <Button
                 type="button"
-                onClick={
-                  printReceipt
-                }
+                onClick={() => printReceipt("thermal")}
               >
-                Print Receipt
+                Print 80 mm Receipt
+              </Button>
+
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={Boolean(a5PrintIssue)}
+                title={a5PrintIssue ?? undefined}
+                onClick={() => printReceipt("a4-two-copy")}
+              >
+                Print Two Delivery Receipt Copies (A4)
               </Button>
 
             </div>
+
+            {a5PrintIssue && (
+              <p className="mt-3 text-right text-xs text-amber-700">
+                {a5PrintIssue}
+              </p>
+            )}
 
           </div>
 
@@ -2665,6 +2812,12 @@ export default function POS() {
         </div>,
         document.body
       )}
+
+      <A5DeliveryReceiptPrint
+        receipt={receipt}
+        products={products}
+        inventory={inventory}
+      />
 
     </div>
   );

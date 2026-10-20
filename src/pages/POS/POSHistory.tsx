@@ -5,6 +5,7 @@ import Button from "../../components/ui/Button";
 import Input from "../../components/ui/Input";
 import Modal from "../../components/ui/Modal";
 import Select from "../../components/ui/Select";
+import A5DeliveryReceiptPrint from "../../components/pos/A5DeliveryReceiptPrint";
 import DeliveryReceiptPrint, {
   type ReceiptData,
 } from "../../components/pos/DeliveryReceiptPrint";
@@ -14,6 +15,14 @@ import POSOrderEditor, {
 import { useInventoryContext } from "../../context/InventoryContext";
 import { useToast } from "../../context/ToastContext";
 import { supabase } from "../../lib/supabase";
+import {
+  printReceipt as printReceiptInFormat,
+  type ReceiptPrintFormat,
+} from "../../utils/receiptPrinting";
+import {
+  getA5ReceiptCatalogIssue,
+  getA5ReceiptDataIssue,
+} from "../../utils/a5DeliveryReceipt";
 import {
   addBusinessDays,
   businessMonthStartKey,
@@ -107,6 +116,59 @@ interface POSAudit {
   copied_to_iao: boolean;
   revisions: POSAuditRevision[];
   events: POSAuditEvent[];
+}
+
+const ITEM_TRANSACTION_BATCH_SIZE = 50;
+const ITEM_PAGE_SIZE = 500;
+
+/*
+ * Supabase caps rows per request, so items are fetched in batches of
+ * transaction IDs, paging within each batch. Any failed page throws, so a
+ * partial result is never treated as an empty item list. Returns null only
+ * when the caller's request has been superseded.
+ */
+async function fetchAllPOSItems(
+  transactionIds: string[],
+  isCurrentRequest: () => boolean
+): Promise<POSHistoryItemRow[] | null> {
+  const rows: POSHistoryItemRow[] = [];
+
+  for (
+    let start = 0;
+    start < transactionIds.length;
+    start += ITEM_TRANSACTION_BATCH_SIZE
+  ) {
+    const batch = transactionIds.slice(
+      start,
+      start + ITEM_TRANSACTION_BATCH_SIZE
+    );
+
+    for (let from = 0; ; from += ITEM_PAGE_SIZE) {
+      const { data, error } = await supabase
+        .from("pos_transaction_items")
+        .select(
+          "transaction_id, product_id, product_name_snapshot, product_code_snapshot, unit_snapshot, unit_price, quantity, line_amount"
+        )
+        .in("transaction_id", batch)
+        .order("transaction_id", { ascending: true })
+        .order("id", { ascending: true })
+        .range(from, from + ITEM_PAGE_SIZE - 1);
+
+      if (!isCurrentRequest()) return null;
+      if (error) {
+        throw new Error(
+          error.message || "Unable to load POS transaction items."
+        );
+      }
+
+      const page = (data ?? []) as POSHistoryItemRow[];
+      rows.push(...page);
+
+      if (page.length < ITEM_PAGE_SIZE) break;
+    }
+  }
+
+  return rows;
 }
 
 type CancellationRecoveryStatus =
@@ -265,7 +327,19 @@ const UNKNOWN_CASHIER_FILTER = "__UNKNOWN_CASHIER__";
 export default function POSHistory() {
   const navigate = useNavigate();
   const { showToast } = useToast();
-  const { refreshInventory } = useInventoryContext();
+  const {
+    refreshInventory,
+    products,
+    inventory,
+    isLoading: catalogLoading,
+    loadError: catalogLoadError,
+  } = useInventoryContext();
+  const a5CatalogIssue = getA5ReceiptCatalogIssue(
+    products,
+    inventory,
+    catalogLoading,
+    catalogLoadError
+  );
   const [transactions, setTransactions] =
     useState<POSHistoryRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -279,6 +353,8 @@ export default function POSHistory() {
     useState<POSHistoryRow | null>(null);
   const [printRequested, setPrintRequested] =
     useState(false);
+  const [printFormat, setPrintFormat] =
+    useState<ReceiptPrintFormat>("thermal");
   const [cancellationTarget, setCancellationTarget] =
     useState<POSHistoryRow | null>(null);
   const [cancellationReason, setCancellationReason] =
@@ -337,12 +413,20 @@ export default function POSHistory() {
     }
 
     const printTimer = window.setTimeout(() => {
-      window.print();
+      try {
+        printReceiptInFormat(printFormat);
+      } catch (error) {
+        console.error("Unable to open the receipt print dialog:", error);
+        showToast(
+          "The print dialog could not be opened. The saved transaction is unchanged.",
+          "error"
+        );
+      }
       setPrintRequested(false);
     }, 0);
 
     return () => window.clearTimeout(printTimer);
-  }, [receipt, printRequested]);
+  }, [receipt, printFormat, printRequested, showToast]);
 
   useEffect(() => {
     const { data: authListener } = supabase.auth.onAuthStateChange(
@@ -407,23 +491,11 @@ export default function POSHistory() {
         if (error) throw new Error(error.message || "Unable to load POS transaction history.");
 
         const transactionIds = (data ?? []).map((row) => row.id);
-        let itemRows: any[] = [];
-
-        if (transactionIds.length > 0) {
-          const {
-            data: loadedItems,
-            error: itemError,
-          } = await supabase
-            .from("pos_transaction_items")
-            .select(
-              "transaction_id, product_id, product_name_snapshot, product_code_snapshot, unit_snapshot, unit_price, quantity, line_amount"
-            )
-            .in("transaction_id", transactionIds);
-
-          if (!isCurrentRequest()) return;
-          if (itemError) throw new Error(itemError.message || "Unable to load POS transaction items.");
-          itemRows = loadedItems ?? [];
-        }
+        const itemRows = await fetchAllPOSItems(
+          transactionIds,
+          isCurrentRequest
+        );
+        if (!itemRows || !isCurrentRequest()) return;
 
         const { data: profileUsername, error: usernameError } =
           await supabase.rpc("get_current_username");
@@ -794,8 +866,19 @@ export default function POSHistory() {
     activeAuditTransactionId.current = null;
   }
 
-  function printTransaction(transaction: POSHistoryRow) {
+  function printTransaction(
+    transaction: POSHistoryRow,
+    format: ReceiptPrintFormat
+  ) {
+    const printIssue =
+      a5CatalogIssue ??
+      getA5ReceiptDataIssue(transaction, products, inventory);
+    if (format === "a4-two-copy" && printIssue) {
+      showToast(printIssue, "error");
+      return;
+    }
     setReceipt(transaction);
+    setPrintFormat(format);
     setPrintRequested(true);
   }
 
@@ -1078,7 +1161,8 @@ export default function POSHistory() {
   }
 
   function printHistoricalRevision(
-    revision: POSAuditRevision
+    revision: POSAuditRevision,
+    format: ReceiptPrintFormat
   ) {
     if (!selectedTransaction) return;
     const snapshot = revision.snapshot;
@@ -1088,6 +1172,13 @@ export default function POSHistory() {
       selectedTransaction.cashierUsername,
       selectedTransaction.cancelledByUsername
     );
+    const printIssue =
+      a5CatalogIssue ??
+      getA5ReceiptDataIssue(historical, products, inventory);
+    if (format === "a4-two-copy" && printIssue) {
+      showToast(printIssue, "error");
+      return;
+    }
     setReceipt({
       ...historical,
       revisionNumber: revision.revision_number,
@@ -1096,6 +1187,7 @@ export default function POSHistory() {
         snapshot.transaction.transaction_status !==
           selectedTransaction.transactionStatus,
     });
+    setPrintFormat(format);
     setPrintRequested(true);
   }
 
@@ -1775,13 +1867,28 @@ export default function POSHistory() {
                           </span>
                           {revision.reason && <p className="text-xs text-slate-500">{revision.reason}</p>}
                         </div>
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          onClick={() => printHistoricalRevision(revision)}
-                        >
-                          Print copy
-                        </Button>
+                        <div className="flex gap-2">
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            onClick={() =>
+                              printHistoricalRevision(revision, "thermal")
+                            }
+                          >
+                            Print 80 mm
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            disabled={Boolean(a5CatalogIssue)}
+                            title={a5CatalogIssue ?? undefined}
+                            onClick={() =>
+                              printHistoricalRevision(revision, "a4-two-copy")
+                            }
+                          >
+                            Print Two Copies (A4)
+                          </Button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -1813,6 +1920,22 @@ export default function POSHistory() {
               </>
             )}
 
+            {(a5CatalogIssue ??
+              getA5ReceiptDataIssue(
+                selectedTransaction,
+                products,
+                inventory
+              )) && (
+              <p className="text-right text-xs text-amber-700">
+                {a5CatalogIssue ??
+                  getA5ReceiptDataIssue(
+                    selectedTransaction,
+                    products,
+                    inventory
+                  )}
+              </p>
+            )}
+
             <div className="flex flex-col-reverse justify-end gap-3 sm:flex-row">
               <Button
                 type="button"
@@ -1824,9 +1947,38 @@ export default function POSHistory() {
 
               <Button
                 type="button"
-                onClick={() => printTransaction(selectedTransaction)}
+                onClick={() =>
+                  printTransaction(selectedTransaction, "thermal")
+                }
               >
-                Reprint Receipt
+                Print 80 mm Receipt
+              </Button>
+
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={Boolean(
+                  a5CatalogIssue ??
+                    getA5ReceiptDataIssue(
+                      selectedTransaction,
+                      products,
+                      inventory
+                    )
+                )}
+                title={
+                  a5CatalogIssue ??
+                  getA5ReceiptDataIssue(
+                    selectedTransaction,
+                    products,
+                    inventory
+                  ) ??
+                  undefined
+                }
+                onClick={() =>
+                  printTransaction(selectedTransaction, "a4-two-copy")
+                }
+              >
+                Print Two Delivery Receipt Copies (A4)
               </Button>
 
               {transactionAudit?.transaction_id === selectedTransaction.id &&
@@ -1945,6 +2097,11 @@ export default function POSHistory() {
       )}
 
       <DeliveryReceiptPrint receipt={receipt} />
+      <A5DeliveryReceiptPrint
+        receipt={receipt}
+        products={products}
+        inventory={inventory}
+      />
     </div>
   );
 }

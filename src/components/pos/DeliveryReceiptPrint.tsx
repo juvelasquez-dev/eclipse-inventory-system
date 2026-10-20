@@ -22,6 +22,7 @@ export interface ReceiptData {
   cancelledAt?: string | null;
   cancelledByUsername?: string | null;
   cancellationReason?: string | null;
+  a5PrintIssue?: string | null;
   revisionNumber?: number;
   historicalRevision?: boolean;
 }

@@ -375,6 +375,10 @@ textarea {
   display: none;
 }
 
+.a5-dr-receipt {
+  display: none;
+}
+
 @media print {
   @page {
     size: 80mm auto;
@@ -756,5 +760,297 @@ textarea {
     margin-top: 4px;
     font-size: 10px;
     line-height: 1.4;
+  }
+}
+
+@page a4-two-copy-delivery {
+  size: A4 landscape;
+  margin: 0;
+}
+
+@media print {
+  html[data-receipt-print-format="a4-two-copy"],
+  body[data-receipt-print-format="a4-two-copy"] {
+    width: 297mm !important;
+    min-width: 297mm !important;
+    height: 210mm !important;
+    min-height: 210mm !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  body[data-receipt-print-format="a4-two-copy"] {
+    overflow: hidden !important;
+  }
+
+  body[data-receipt-print-format="a4-two-copy"] > #root,
+  body[data-receipt-print-format="a4-two-copy"] .dr-receipt,
+  body[data-receipt-print-format="a4-two-copy"] .iao-receipt {
+    display: none !important;
+  }
+
+  .a5-two-copy-sheet {
+    page: a4-two-copy-delivery;
+    display: none;
+  }
+
+  body[data-receipt-print-format="a4-two-copy"] .a5-two-copy-sheet {
+    display: grid !important;
+    grid-template-columns: 148mm 1mm 148mm;
+    align-items: stretch;
+    width: 297mm !important;
+    height: 210mm !important;
+    min-width: 297mm !important;
+    max-width: 297mm !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+    background: #fff !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .a5-two-copy-sheet .a5-delivery-receipt {
+    page: a4-two-copy-delivery;
+    display: flex !important;
+    visibility: visible !important;
+    flex-direction: column;
+    width: 148mm !important;
+    height: 210mm !important;
+    min-width: 148mm !important;
+    max-width: 148mm !important;
+    position: relative !important;
+    margin: 0 !important;
+    padding: 4.5mm 6mm !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+    background: #fff !important;
+    color: #111 !important;
+    font-family: Georgia, "Times New Roman", serif !important;
+    font-size: 9px !important;
+    line-height: 1.25 !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .a5-two-copy-sheet .a5-delivery-receipt *,
+  .a5-two-copy-sheet .a5-delivery-receipt *::before,
+  .a5-two-copy-sheet .a5-delivery-receipt *::after {
+    visibility: visible !important;
+    box-sizing: border-box !important;
+  }
+
+  .a5-two-copy-sheet .a5-dr-cut-guide {
+    align-self: stretch;
+    justify-self: center;
+    width: 0;
+    border-left: 0.25mm dashed #aaa;
+  }
+
+  .a5-two-copy-sheet .a5-dr-copy-label {
+    position: absolute;
+    top: 1.5mm;
+    right: 7mm;
+    left: 7mm;
+    margin: 0;
+    color: #555;
+    font-family: Arial, sans-serif;
+    font-size: 7.5px;
+    font-weight: 600;
+    letter-spacing: 0.35px;
+    line-height: 1;
+    text-align: center;
+  }
+
+  .a5-two-copy-sheet .a5-dr-header {
+    text-align: center;
+    line-height: 1.2;
+    font-size: 8.5px;
+  }
+
+  .a5-two-copy-sheet .a5-dr-header p {
+    margin: 0;
+  }
+
+  .a5-two-copy-sheet .a5-dr-header .a5-dr-company {
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.15px;
+  }
+
+  .a5-two-copy-sheet .a5-dr-distributor {
+    font-style: italic;
+  }
+
+  .a5-two-copy-sheet .a5-dr-distributor strong {
+    color: #285d88;
+  }
+
+  .a5-two-copy-sheet .a5-dr-identification {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 4mm;
+    margin-top: 2mm;
+    font-size: 9px;
+    line-height: 1.2;
+  }
+
+  .a5-two-copy-sheet .a5-dr-customer {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .a5-two-copy-sheet .a5-dr-customer p {
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .a5-two-copy-sheet .a5-dr-number {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  .a5-two-copy-sheet .a5-dr-number-title {
+    display: flex;
+    gap: 1.5mm;
+    color: #a83e3e;
+    font-weight: 700;
+  }
+
+  .a5-two-copy-sheet .a5-dr-cancelled {
+    margin: 1mm 0 0;
+    text-align: center;
+    font-weight: 700;
+  }
+
+  .a5-two-copy-sheet .a5-dr-divider {
+    height: 0;
+    margin: 1.5mm 0 1mm;
+    border: 0;
+    border-top: 1px dashed #333;
+  }
+
+  .a5-two-copy-sheet .a5-dr-checklist {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    flex: 1 1 auto;
+    min-height: 0;
+    align-content: stretch;
+    gap: 6mm;
+    width: 100%;
+  }
+
+  .a5-two-copy-sheet .a5-dr-column {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .a5-two-copy-sheet .a5-dr-group {
+    margin: 0 0 1.5mm;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .a5-two-copy-sheet .a5-dr-column-heading,
+  .a5-two-copy-sheet .a5-dr-product-row,
+  .a5-two-copy-sheet .a5-dr-group-subtotal {
+    display: flex;
+    align-items: baseline;
+    column-gap: 1mm;
+  }
+
+  .a5-two-copy-sheet .a5-dr-column-heading {
+    justify-content: space-between;
+    margin-bottom: 0.6mm;
+    font-size: 10px;
+    line-height: 1.1;
+  }
+
+  .a5-two-copy-sheet .a5-dr-product-row {
+    min-height: 3.5mm;
+    font-size: 10px;
+    line-height: 1.1;
+  }
+
+  .a5-two-copy-sheet .a5-dr-group-subtotal {
+    justify-content: flex-end;
+    min-height: 3.2mm;
+    padding-top: 0.2mm;
+    font-size: 9px;
+    line-height: 1.1;
+  }
+
+  .a5-two-copy-sheet .a5-dr-product-code {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    letter-spacing: 0.1px;
+  }
+
+  .a5-two-copy-sheet .a5-dr-quantity {
+    flex: 0 0 auto;
+    margin-left: auto;
+    min-width: 5mm;
+    font-size: 10.5px;
+    font-weight: 700;
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  .a5-two-copy-sheet .a5-dr-summary {
+    width: 100%;
+    margin-top: auto;
+    margin-bottom: 45mm;
+    padding: 1mm 0 1mm 2mm;
+    background: #fff;
+  }
+
+  .a5-two-copy-sheet .a5-dr-unlisted,
+  .a5-two-copy-sheet .a5-dr-total {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 2mm;
+  }
+
+  .a5-two-copy-sheet .a5-dr-total {
+    font-size: 12px;
+    line-height: 1.25;
+  }
+
+  .a5-two-copy-sheet .a5-dr-total strong:last-child {
+    color: #a83e3e;
+    font-size: 18px;
+  }
+
+  .a5-two-copy-sheet .a5-dr-payment {
+    display: flex;
+    justify-content: space-between;
+    gap: 2mm;
+    margin-top: 1.5mm;
+    font-size: 9px;
+  }
+
+  .a5-two-copy-sheet .a5-dr-footer {
+    margin-top: auto;
+    padding-top: 1.5mm;
+    text-align: center;
+    font-size: 9.5px;
+    font-style: italic;
+    font-weight: 700;
+  }
+
+  .a5-two-copy-sheet .a5-dr-column-heading,
+  .a5-two-copy-sheet .a5-dr-group-subtotal,
+  .a5-two-copy-sheet .a5-dr-summary,
+  .a5-two-copy-sheet .a5-dr-footer {
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
 }
