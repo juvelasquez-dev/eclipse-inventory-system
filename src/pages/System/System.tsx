@@ -16,6 +16,7 @@ import {
 import { supabase } from "../../lib/supabase";
 import { useUserRole } from "../../hooks/useUserRole";
 import { useUserArea } from "../../hooks/useUserArea";
+import ThemeToggle from "../../components/ui/ThemeToggle";
 
 export default function System() {
   const navigate = useNavigate();
@@ -137,14 +138,18 @@ export default function System() {
           </span>
         </div>
 
-        <button
-          type="button"
-          onClick={handleLogout}
-          className="ml-auto inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900"
-        >
-          <LogOut size={16} />
-          <span>Logout</span>
-        </button>
+        <div className="ml-auto flex items-center gap-2 sm:gap-3">
+          <ThemeToggle />
+
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900"
+          >
+            <LogOut size={16} />
+            <span>Logout</span>
+          </button>
+        </div>
 
       </div>
 

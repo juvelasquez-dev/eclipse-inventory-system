@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { supabase } from "../../lib/supabase";
+import ThemeToggle from "../ui/ThemeToggle";
 
 type TopbarModule =
   | "inventory"
@@ -146,6 +147,8 @@ export default function Topbar({
             </>
           )}
         </span>
+
+        <ThemeToggle />
 
         {/* Logout */}
         <button
