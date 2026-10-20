@@ -118,6 +118,43 @@ async function captureLoad<T>(
   }
 }
 
+const TRANSACTION_PAGE_SIZE = 500;
+
+/*
+ * Fetch every transaction page by page (Supabase caps rows per request).
+ * Throws if any page fails so callers never receive partial history.
+ */
+async function fetchAllTransactions(): Promise<Transaction[]> {
+  const rows: { id: unknown }[] = [];
+
+  for (let from = 0; ; from += TRANSACTION_PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from("transactions")
+      .select("*")
+      .order("date", { ascending: false })
+      .order("id", { ascending: false })
+      .range(from, from + TRANSACTION_PAGE_SIZE - 1);
+
+    if (error) {
+      throw error;
+    }
+
+    const page = data ?? [];
+    rows.push(...page);
+
+    if (page.length < TRANSACTION_PAGE_SIZE) {
+      break;
+    }
+  }
+
+  const uniqueRows = new Map<unknown, { id: unknown }>();
+  for (const row of rows) {
+    uniqueRows.set(row.id, row);
+  }
+
+  return Array.from(uniqueRows.values()).map(mapTransaction);
+}
+
 function getErrorMessage(error: unknown) {
   if (error instanceof Error) {
     return error.message;
@@ -334,20 +371,7 @@ export function InventoryProvider({
 
               return (data ?? []).map(mapProduct);
             }),
-            captureLoad(async () => {
-              const { data, error } = await supabase
-                .from("transactions")
-                .select("*")
-                .order("date", {
-                  ascending: false,
-                });
-
-              if (error) {
-                throw error;
-              }
-
-              return (data ?? []).map(mapTransaction);
-            }),
+            captureLoad(fetchAllTransactions),
             captureLoad(async () => {
               const { data, error } = await supabase
                 .from("outlets")
@@ -595,17 +619,10 @@ export function InventoryProvider({
       return;
     }
 
-    const {
-      data: transactionData,
-      error: transactionError,
-    } = await supabase
-      .from("transactions")
-      .select("*")
-      .order("date", {
-        ascending: false,
-      });
-
-    if (transactionError) {
+    let loadedTransactions: Transaction[];
+    try {
+      loadedTransactions = await fetchAllTransactions();
+    } catch (transactionError) {
       console.error(
         "Error loading transactions:",
         transactionError
@@ -617,11 +634,7 @@ export function InventoryProvider({
       return;
     }
 
-    setTransactions(
-      (transactionData ?? []).map(
-        mapTransaction
-      )
-    );
+    setTransactions(loadedTransactions);
   }
 
   /*
