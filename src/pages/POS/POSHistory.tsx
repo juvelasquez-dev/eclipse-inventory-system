@@ -36,6 +36,8 @@ import {
 interface POSHistoryRow extends ReceiptData {
   id: string;
   cashierUsername: string;
+  createdBy: string | null;
+  areaCode: string | null;
   transactionStatus: string;
   cancelledAt: string | null;
   cancelledByUsername: string;
@@ -155,6 +157,8 @@ function mapHistoryRow(
     id: row.id,
     deliveryReceiptNumber: getDisplayReceiptNumber(row),
     cashierUsername,
+    createdBy: row.created_by || null,
+    areaCode: row.area_code?.trim() || null,
     customerName: row.customer_name ?? "",
     customerAddress: row.customer_address ?? "",
     customerPhone: row.customer_phone ?? "",
@@ -256,6 +260,7 @@ function getTotalQuantity(items: POSHistoryRow["items"]) {
 }
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50];
+const UNKNOWN_CASHIER_FILTER = "__UNKNOWN_CASHIER__";
 
 export default function POSHistory() {
   const navigate = useNavigate();
@@ -316,6 +321,10 @@ export default function POSHistory() {
   const [customEnd, setCustomEnd] =
     useState("");
   const [paymentFilter, setPaymentFilter] =
+    useState("ALL");
+  const [cashierFilter, setCashierFilter] =
+    useState("ALL");
+  const [areaFilter, setAreaFilter] =
     useState("ALL");
   const [sortBy, setSortBy] =
     useState("NEWEST");
@@ -492,6 +501,58 @@ export default function POSHistory() {
    * =========================================================
    */
 
+  const cashierOptions = useMemo(() => {
+    const byId = new Map<string, string>();
+    let hasUnknown = false;
+
+    transactions.forEach((transaction) => {
+      if (!transaction.createdBy) {
+        hasUnknown = true;
+        return;
+      }
+      if (!byId.has(transaction.createdBy)) {
+        byId.set(transaction.createdBy, transaction.cashierUsername);
+      }
+    });
+
+    const labelCounts = new Map<string, number>();
+    byId.forEach((label) =>
+      labelCounts.set(label, (labelCounts.get(label) ?? 0) + 1)
+    );
+
+    const options = Array.from(byId, ([id, label]) => ({
+      value: id,
+      label:
+        (labelCounts.get(label) ?? 0) > 1
+          ? `${label} (${id.slice(0, 8)})`
+          : label,
+    })).sort((a, b) => a.label.localeCompare(b.label));
+
+    if (hasUnknown) {
+      options.push({
+        value: UNKNOWN_CASHIER_FILTER,
+        label: "Unknown cashier (not recorded)",
+      });
+    }
+
+    return [{ label: "All Cashiers", value: "ALL" }, ...options];
+  }, [transactions]);
+
+  const areaOptions = useMemo(() => {
+    const areas = Array.from(
+      new Set(
+        transactions
+          .map((transaction) => transaction.areaCode)
+          .filter((area): area is string => Boolean(area))
+      )
+    ).sort();
+
+    return [
+      { label: "All Areas", value: "ALL" },
+      ...areas.map((area) => ({ label: area, value: area })),
+    ];
+  }, [transactions]);
+
   const filteredTransactions = useMemo(() => {
     const keyword = search.trim().toLowerCase();
 
@@ -519,6 +580,16 @@ export default function POSHistory() {
         paymentFilter === "ALL" ||
         transaction.paymentMethod === paymentFilter;
 
+      const matchesCashier =
+        cashierFilter === "ALL" ||
+        (cashierFilter === UNKNOWN_CASHIER_FILTER
+          ? !transaction.createdBy
+          : transaction.createdBy === cashierFilter);
+
+      const matchesArea =
+        areaFilter === "ALL" ||
+        transaction.areaCode === areaFilter;
+
       const matchesDate = matchesDateFilter(
         transaction.createdAt,
         dateFilter,
@@ -530,6 +601,8 @@ export default function POSHistory() {
         matchesSearch &&
         matchesStatus &&
         matchesPayment &&
+        matchesCashier &&
+        matchesArea &&
         matchesDate
       );
     });
@@ -538,6 +611,8 @@ export default function POSHistory() {
     search,
     status,
     paymentFilter,
+    cashierFilter,
+    areaFilter,
     dateFilter,
     customStart,
     customEnd,
@@ -547,12 +622,16 @@ export default function POSHistory() {
     search.trim() !== "" ||
     status !== "ALL" ||
     paymentFilter !== "ALL" ||
+    cashierFilter !== "ALL" ||
+    areaFilter !== "ALL" ||
     dateFilter !== "ALL";
 
   function clearFilters() {
     setSearch("");
     setStatus("ALL");
     setPaymentFilter("ALL");
+    setCashierFilter("ALL");
+    setAreaFilter("ALL");
     setDateFilter("ALL");
     setCustomStart("");
     setCustomEnd("");
@@ -668,6 +747,8 @@ export default function POSHistory() {
     search,
     status,
     paymentFilter,
+    cashierFilter,
+    areaFilter,
     dateFilter,
     customStart,
     customEnd,
@@ -1221,7 +1302,7 @@ export default function POSHistory() {
           {/* Filter Toolbar */}
           <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
 
-            <div className="grid grid-cols-1 items-end gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <div className="grid grid-cols-1 items-end gap-3 md:grid-cols-2 xl:grid-cols-3">
 
               <Input
                 label="Search"
@@ -1273,6 +1354,24 @@ export default function POSHistory() {
                   { label: "Completed", value: "COMPLETED" },
                   { label: "Cancelled", value: "CANCELLED" },
                 ]}
+              />
+
+              <Select
+                label="Cashier"
+                value={cashierFilter}
+                onChange={(event) =>
+                  setCashierFilter(event.target.value)
+                }
+                options={cashierOptions}
+              />
+
+              <Select
+                label="Area"
+                value={areaFilter}
+                onChange={(event) =>
+                  setAreaFilter(event.target.value)
+                }
+                options={areaOptions}
               />
 
             </div>
