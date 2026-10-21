@@ -34,6 +34,16 @@ interface InventoryContextType {
 
   loadError: string | null;
 
+  inventorySyncStatus: "loading" | "refreshing" | "fresh" | "stale" | "error";
+
+  inventoryRealtimeStatus: "connecting" | "subscribed" | "unavailable";
+
+  inventoryLastSyncedAt: number | null;
+
+  inventorySyncError: string | null;
+
+  markInventoryStale: (message?: string) => void;
+
   loadOperationalData: (
     userId: string
   ) => Promise<void>;
@@ -79,7 +89,7 @@ interface InventoryContextType {
     id: string
   ) => Promise<boolean>;
 
-  refreshInventory: () => Promise<void>;
+  refreshInventory: (options?: { invalidate?: boolean }) => Promise<void>;
 
   refreshOutlets: () => Promise<void>;
 }
@@ -277,13 +287,36 @@ export function InventoryProvider({
   const [loadError, setLoadError] =
     useState<string | null>(null);
 
+  const [activeUserId, setActiveUserId] =
+    useState<string | null>(null);
+
+  const [inventorySyncStatus, setInventorySyncStatus] =
+    useState<InventoryContextType["inventorySyncStatus"]>("loading");
+
+  const [inventoryRealtimeStatus, setInventoryRealtimeStatus] =
+    useState<InventoryContextType["inventoryRealtimeStatus"]>("connecting");
+
+  const [inventoryLastSyncedAt, setInventoryLastSyncedAt] =
+    useState<number | null>(null);
+
+  const [inventorySyncError, setInventorySyncError] =
+    useState<string | null>(null);
+
+  const [inventoryRefreshPending, setInventoryRefreshPending] =
+    useState(false);
+
   const loadRequestIdRef = useRef(0);
   const operationGenerationRef = useRef(0);
+  const inventoryInvalidationVersionRef = useRef(0);
   const activeUserIdRef = useRef<string | null>(null);
   const attemptedUserIdRef = useRef<string | null>(null);
   const inFlightLoadRef = useRef<{
     userId: string;
     promise: Promise<void>;
+  } | null>(null);
+  const inFlightInventoryRefreshRef = useRef<{
+    promise: Promise<void>;
+    rerun: boolean;
   } | null>(null);
 
   const getOperation = useCallback(
@@ -315,13 +348,21 @@ export function InventoryProvider({
     loadRequestIdRef.current += 1;
     operationGenerationRef.current += 1;
     activeUserIdRef.current = null;
+    setActiveUserId(null);
     attemptedUserIdRef.current = null;
     inFlightLoadRef.current = null;
+    inFlightInventoryRefreshRef.current = null;
+    inventoryInvalidationVersionRef.current += 1;
     setProducts([]);
     setTransactions([]);
     setOutlets([]);
     setIsLoading(false);
     setLoadError(null);
+    setInventorySyncStatus("loading");
+    setInventoryRealtimeStatus("connecting");
+    setInventoryLastSyncedAt(null);
+    setInventorySyncError(null);
+    setInventoryRefreshPending(false);
   }, []);
 
   const loadForUser = useCallback(
@@ -333,12 +374,20 @@ export function InventoryProvider({
         loadRequestIdRef.current += 1;
         operationGenerationRef.current += 1;
         activeUserIdRef.current = userId;
+        setActiveUserId(userId);
         attemptedUserIdRef.current = null;
         inFlightLoadRef.current = null;
+        inFlightInventoryRefreshRef.current = null;
+        inventoryInvalidationVersionRef.current += 1;
         setProducts([]);
         setTransactions([]);
         setOutlets([]);
         setLoadError(null);
+        setInventorySyncStatus("loading");
+        setInventoryRealtimeStatus("connecting");
+        setInventoryLastSyncedAt(null);
+        setInventorySyncError(null);
+        setInventoryRefreshPending(false);
       }
 
       const currentLoad = inFlightLoadRef.current;
@@ -353,8 +402,13 @@ export function InventoryProvider({
       attemptedUserIdRef.current = userId;
       operationGenerationRef.current += 1;
       const requestId = ++loadRequestIdRef.current;
+      const inventoryVersionAtLoadStart =
+        ++inventoryInvalidationVersionRef.current;
       setIsLoading(true);
       setLoadError(null);
+      setInventoryRealtimeStatus("connecting");
+      setInventorySyncStatus("refreshing");
+      setInventorySyncError(null);
 
       const promise = (async () => {
         const [productResult, transactionResult, outletResult] =
@@ -417,8 +471,28 @@ export function InventoryProvider({
           errors.push(
             `Transactions: ${getErrorMessage(transactionResult.error)}`
           );
+          if (
+            inventoryVersionAtLoadStart ===
+            inventoryInvalidationVersionRef.current
+          ) {
+            setInventorySyncStatus("error");
+            setInventorySyncError(
+              `Unable to refresh inventory: ${getErrorMessage(transactionResult.error)}`
+            );
+          }
         } else {
-          setTransactions(transactionResult.data);
+          if (
+            inventoryVersionAtLoadStart ===
+            inventoryInvalidationVersionRef.current
+          ) {
+            inventoryInvalidationVersionRef.current += 1;
+            setTransactions(transactionResult.data);
+            setInventoryLastSyncedAt(Date.now());
+            setInventorySyncStatus("fresh");
+            setInventorySyncError(null);
+          } else {
+            setInventoryRefreshPending(true);
+          }
         }
 
         if (!outletResult.succeeded) {
@@ -613,29 +687,230 @@ export function InventoryProvider({
     );
   }
 
-  async function loadTransactions() {
+  const markInventoryStale = useCallback((message?: string) => {
+    inventoryInvalidationVersionRef.current += 1;
+    setInventorySyncStatus("stale");
+    setInventorySyncError(message ?? null);
+    if (inFlightInventoryRefreshRef.current) {
+      inFlightInventoryRefreshRef.current.rerun = true;
+    }
+  }, []);
+
+  const loadTransactions = useCallback(async (options?: {
+    invalidate?: boolean;
+  }) => {
+    if (options?.invalidate) {
+      markInventoryStale();
+    }
+
     const operation = getOperation();
     if (!operation) {
+      setInventorySyncStatus("error");
+      setInventorySyncError("Inventory cannot be refreshed without an active session.");
       return;
     }
 
-    let loadedTransactions: Transaction[];
-    try {
-      loadedTransactions = await fetchAllTransactions();
-    } catch (transactionError) {
-      console.error(
-        "Error loading transactions:",
-        transactionError
-      );
-      return;
+    const initialLoad = inFlightLoadRef.current;
+    if (initialLoad?.userId === operation.userId) {
+      await initialLoad.promise;
+      if (!isCurrentOperation(operation)) return;
     }
 
-    if (!isCurrentOperation(operation)) {
-      return;
+    const currentRefresh = inFlightInventoryRefreshRef.current;
+    if (currentRefresh) {
+      return currentRefresh.promise;
     }
 
-    setTransactions(loadedTransactions);
-  }
+    const refreshState = {
+      promise: Promise.resolve(),
+      rerun: false,
+    };
+    const promise = (async () => {
+      setInventorySyncStatus("refreshing");
+      setInventorySyncError(null);
+
+      while (true) {
+        refreshState.rerun = false;
+        const invalidationVersion =
+          inventoryInvalidationVersionRef.current;
+
+        try {
+          const loadedTransactions = await fetchAllTransactions();
+          if (!isCurrentOperation(operation)) return;
+
+          if (
+            invalidationVersion !==
+            inventoryInvalidationVersionRef.current
+          ) {
+            refreshState.rerun = true;
+            continue;
+          }
+
+          inventoryInvalidationVersionRef.current += 1;
+          setTransactions(loadedTransactions);
+          setInventoryLastSyncedAt(Date.now());
+          setInventorySyncStatus("fresh");
+          setInventorySyncError(null);
+        } catch (transactionError) {
+          if (!isCurrentOperation(operation)) return;
+
+          if (
+            invalidationVersion !==
+            inventoryInvalidationVersionRef.current
+          ) {
+            refreshState.rerun = true;
+            continue;
+          }
+
+          console.error("Error refreshing inventory:", transactionError);
+          setInventorySyncStatus("error");
+          setInventorySyncError(
+            `Unable to refresh inventory: ${getErrorMessage(transactionError)}`
+          );
+        }
+
+        if (!refreshState.rerun) {
+          if (inFlightInventoryRefreshRef.current === refreshState) {
+            inFlightInventoryRefreshRef.current = null;
+          }
+          return;
+        }
+      }
+    })();
+
+    refreshState.promise = promise;
+    inFlightInventoryRefreshRef.current = refreshState;
+    return promise;
+  }, [getOperation, isCurrentOperation, markInventoryStale]);
+
+  useEffect(() => {
+    if (!inventoryRefreshPending || isLoading) return;
+    const refreshTimer = window.setTimeout(() => {
+      setInventoryRefreshPending(false);
+      void loadTransactions();
+    }, 0);
+    return () => window.clearTimeout(refreshTimer);
+  }, [inventoryRefreshPending, isLoading, loadTransactions]);
+
+  useEffect(() => {
+    if (!activeUserId || isLoading) return;
+
+    let active = true;
+    let refreshTimer: number | undefined;
+    let fallbackTimer: number | undefined;
+
+    const refreshWhenAvailable = () => {
+      if (document.visibilityState === "visible" && navigator.onLine) {
+        void loadTransactions();
+      }
+    };
+
+    const markOffline = () => {
+      setInventoryRealtimeStatus("unavailable");
+      markInventoryStale("The device is offline. Inventory may be outdated.");
+    };
+
+    const handleOnline = () => {
+      markInventoryStale("Connection restored. Refreshing inventory.");
+      void loadTransactions();
+    };
+
+    const handleInventoryChange = () => {
+      if (!active) return;
+      markInventoryStale();
+      if (refreshTimer !== undefined) {
+        window.clearTimeout(refreshTimer);
+      }
+      refreshTimer = window.setTimeout(() => {
+        refreshWhenAvailable();
+      }, 300);
+    };
+
+    const startFallbackRefresh = () => {
+      if (fallbackTimer !== undefined) return;
+      fallbackTimer = window.setInterval(() => {
+        refreshWhenAvailable();
+      }, 30_000);
+    };
+
+    const channel = supabase
+      .channel(`inventory-transactions:${activeUserId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "transactions",
+        },
+        handleInventoryChange
+      )
+      .subscribe((status) => {
+        if (!active) return;
+        if (status === "SUBSCRIBED") {
+          setInventoryRealtimeStatus("subscribed");
+          markInventoryStale();
+          void loadTransactions();
+          return;
+        }
+
+        if (
+          status === "CHANNEL_ERROR" ||
+          status === "TIMED_OUT" ||
+          status === "CLOSED"
+        ) {
+          setInventoryRealtimeStatus("unavailable");
+          markInventoryStale(
+            "Live inventory updates are unavailable. Checking periodically."
+          );
+          startFallbackRefresh();
+          if (navigator.onLine) {
+            void loadTransactions();
+          }
+        }
+      });
+
+    const handleOffline = () => {
+      markOffline();
+      startFallbackRefresh();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        refreshWhenAvailable();
+      }
+    };
+
+    window.addEventListener("focus", refreshWhenAvailable);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    if (!navigator.onLine) {
+      handleOffline();
+    } else {
+      startFallbackRefresh();
+    }
+
+    return () => {
+      active = false;
+      if (refreshTimer !== undefined) {
+        window.clearTimeout(refreshTimer);
+      }
+      if (fallbackTimer !== undefined) {
+        window.clearInterval(fallbackTimer);
+      }
+      window.removeEventListener("focus", refreshWhenAvailable);
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      void supabase.removeChannel(channel);
+    };
+  }, [
+    activeUserId,
+    isLoading,
+    loadTransactions,
+    markInventoryStale,
+  ]);
 
   /*
    * Calculate inventory from products
@@ -1158,6 +1433,8 @@ export function InventoryProvider({
       ...prev,
       mapTransaction(row),
     ]);
+    markInventoryStale();
+    void loadTransactions();
 
     return true;
   }
@@ -1171,6 +1448,11 @@ export function InventoryProvider({
         inventory,
         isLoading,
         loadError,
+        inventorySyncStatus,
+        inventoryRealtimeStatus,
+        inventoryLastSyncedAt,
+        inventorySyncError,
+        markInventoryStale,
         loadOperationalData,
         clearOperationalData,
         retryOperationalData,
@@ -1184,8 +1466,7 @@ export function InventoryProvider({
         updateOutlet,
         deleteOutlet,
 
-        refreshInventory:
-          loadTransactions,
+        refreshInventory: loadTransactions,
 
         refreshOutlets:
           loadOutlets,

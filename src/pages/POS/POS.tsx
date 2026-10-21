@@ -178,7 +178,20 @@ export default function POS() {
     outlets,
     isLoading: catalogLoading,
     loadError: catalogLoadError,
+    inventorySyncStatus,
+    inventoryRealtimeStatus,
+    inventoryLastSyncedAt,
+    inventorySyncError,
+    refreshInventory,
   } = useInventory();
+  const inventoryIsFresh =
+    inventorySyncStatus === "fresh" &&
+    inventoryRealtimeStatus !== "connecting";
+  const inventoryDisplayStatus =
+    inventorySyncStatus === "fresh" &&
+    inventoryRealtimeStatus === "connecting"
+      ? "stale"
+      : inventorySyncStatus;
   const { showToast } = useToast();
   const a5CatalogIssue = getA5ReceiptCatalogIssue(
     products,
@@ -589,12 +602,22 @@ export default function POS() {
   const selectedProductUnit =
     selectedProduct?.unit ?? "unit";
 
+  const selectedProductCartQuantity =
+    selectedProduct
+      ? cart.find((item) => item.product.id === selectedProduct.id)?.quantity ?? 0
+      : 0;
+
   const quantityExceedsStock =
     selectedProductStock > 0 &&
-    modalQuantity > selectedProductStock;
+    selectedProductCartQuantity + modalQuantity > selectedProductStock;
 
   function confirmAddToCart() {
     if (!selectedProduct) {
+      return;
+    }
+
+    if (!inventoryIsFresh) {
+      showToast("Refresh inventory before adding products to the sale.", "error");
       return;
     }
 
@@ -663,6 +686,32 @@ export default function POS() {
       return;
     }
 
+    const currentQuantity =
+      cart.find((item) => item.product.id === productId)?.quantity ?? 0;
+    const availableStock =
+      inventoryByProductId.get(productId)?.stock ?? 0;
+
+    if (
+      !inventoryIsFresh &&
+      quantity > currentQuantity
+    ) {
+      showToast("Refresh inventory before increasing cart quantities.", "error");
+      return;
+    }
+
+    if (
+      inventoryIsFresh &&
+      (!Number.isInteger(quantity) || quantity > availableStock)
+    ) {
+      showToast(
+        `Only ${availableStock} ${
+          cart.find((item) => item.product.id === productId)?.product.unit ?? "unit"
+        } available.`,
+        "error"
+      );
+      return;
+    }
+
     setCart((currentCart) =>
       currentCart.map((item) =>
         item.product.id === productId
@@ -710,6 +759,12 @@ export default function POS() {
     0
   );
 
+  const cartStockIssues = cart.filter((item) => {
+    const availableStock =
+      inventoryByProductId.get(item.product.id)?.stock ?? 0;
+    return item.quantity > availableStock;
+  });
+
   /*
    * =========================================================
    * CHECKOUT
@@ -718,6 +773,14 @@ export default function POS() {
 
   function openCheckout() {
     if (cart.length === 0) {
+      return;
+    }
+    if (!inventoryIsFresh) {
+      showToast("Refresh inventory before starting a checkout.", "error");
+      return;
+    }
+    if (cartStockIssues.length > 0) {
+      showToast("Reduce cart quantities to the currently available stock before checkout.", "error");
       return;
     }
     if (checkoutRecovery.status !== "missing") {
@@ -831,6 +894,16 @@ export default function POS() {
   }
 
   function getCurrentCheckoutPayload(): CheckoutPayload | null {
+    if (!inventoryIsFresh) {
+      showToast("Refresh inventory before starting a checkout.", "error");
+      return null;
+    }
+
+    if (cartStockIssues.length > 0) {
+      showToast("Reduce cart quantities to the currently available stock before checkout.", "error");
+      return null;
+    }
+
     if (cart.length === 0) {
       showToast(
         "Add at least one product to the cart.",
@@ -988,6 +1061,7 @@ export default function POS() {
 
       if (error) {
         setCheckoutOpen(false);
+        void refreshInventory({ invalidate: true });
         console.error("POS transaction failed:", error);
         showToast(
           error.message ||
@@ -1022,6 +1096,7 @@ export default function POS() {
         data.transaction_status !== "COMPLETED"
       ) {
         setCheckoutOpen(false);
+        void refreshInventory({ invalidate: true });
         showToast(
           "The checkout may have completed, but its confirmation was incomplete. Retrying sends the same request ID; the server can return the earlier result only if it retained the idempotency record. Check POS History before discarding this attempt.",
           "error"
@@ -1030,6 +1105,7 @@ export default function POS() {
       }
       const transactionResult = data;
       const receiptNumber = transactionResult.display_receipt_number;
+      void refreshInventory({ invalidate: true });
       const cleared = clearSessionAttempt(
         checkoutRetryStorageKey(attempt.userId)
       );
@@ -1161,6 +1237,7 @@ export default function POS() {
       );
     } catch (error) {
       setCheckoutOpen(false);
+      void refreshInventory({ invalidate: true });
       console.error("Unexpected POS error:", error);
       showToast(
         "Checkout confirmation is uncertain. The saved attempt is retained; retry it before starting another sale.",
@@ -1260,6 +1337,51 @@ export default function POS() {
             </p>
 
           </div>
+
+          {(!inventoryIsFresh ||
+            inventoryRealtimeStatus === "unavailable") && (
+            <section
+              role={inventoryDisplayStatus === "refreshing" || inventoryDisplayStatus === "loading" ? "status" : "alert"}
+              aria-live="polite"
+              className={`rounded-xl border p-4 ${
+                inventoryDisplayStatus === "refreshing" || inventoryDisplayStatus === "loading"
+                  ? "border-blue-200 bg-blue-50 text-blue-900"
+                  : "border-amber-300 bg-amber-50 text-amber-950"
+              }`}
+            >
+              <p className="font-semibold">
+                {inventoryDisplayStatus === "loading" && "Loading current inventory"}
+                {inventoryDisplayStatus === "refreshing" && "Refreshing current inventory"}
+                {inventoryDisplayStatus === "stale" && "Inventory may be out of date"}
+                {inventoryDisplayStatus === "error" && "Unable to verify current inventory"}
+                {inventoryIsFresh &&
+                  inventoryRealtimeStatus === "unavailable" &&
+                  "Live inventory updates unavailable"}
+              </p>
+              <p className="mt-1 text-sm">
+                {inventorySyncError ??
+                  (inventoryIsFresh && inventoryRealtimeStatus === "unavailable"
+                    ? "The app is reconciling stock with the database every 30 seconds while this tab is visible and online."
+                    : inventoryDisplayStatus === "refreshing" || inventoryDisplayStatus === "loading"
+                    ? "Product additions and new checkouts are paused until stock refresh completes."
+                    : "Displayed quantities may be outdated. Product additions and new checkouts are paused.")}
+                {inventoryLastSyncedAt !== null &&
+                  ` Last successful refresh: ${new Date(inventoryLastSyncedAt).toLocaleTimeString("en-PH")}.`}
+              </p>
+              {(inventoryDisplayStatus === "stale" ||
+                inventoryDisplayStatus === "error" ||
+                inventoryRealtimeStatus === "unavailable") && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="mt-3"
+                  onClick={() => void refreshInventory()}
+                >
+                  Refresh inventory
+                </Button>
+              )}
+            </section>
+          )}
 
         </div>
 
@@ -1418,6 +1540,12 @@ export default function POS() {
                   Select a product to add
                   it to the cart.
                 </p>
+                {inventoryLastSyncedAt !== null &&
+                  inventoryIsFresh && (
+                    <p className="mt-1 text-xs text-slate-400">
+                      Stock last refreshed {new Date(inventoryLastSyncedAt).toLocaleTimeString("en-PH")}.
+                    </p>
+                  )}
 
               </div>
 
@@ -1572,6 +1700,7 @@ export default function POS() {
                           product.id
                         }
                         type="button"
+                        disabled={!inventoryIsFresh}
                         onClick={() =>
                           openAddToCartModal(
                             product
@@ -1840,6 +1969,12 @@ export default function POS() {
                 )
               )}
 
+              {cartStockIssues.length > 0 && (
+                <p role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+                  Some cart quantities are above the displayed available stock. Reduce or remove those items before checkout.
+                </p>
+              )}
+
             </div>
 
             {/* Cart Summary */}
@@ -1879,7 +2014,9 @@ export default function POS() {
                 onClick={openCheckout}
                 disabled={
                   cart.length === 0 ||
-                  isSubmitting
+                  isSubmitting ||
+                  !inventoryIsFresh ||
+                  cartStockIssues.length > 0
                 }
                 className="mt-5 w-full !py-3 text-base"
               >
@@ -2111,6 +2248,7 @@ export default function POS() {
                 disabled={
                   selectedProductStock <= 0 ||
                   quantityExceedsStock ||
+                  !inventoryIsFresh ||
                   !Number.isInteger(modalQuantity) ||
                   modalQuantity < 1
                 }
