@@ -400,6 +400,7 @@ export function InventoryProvider({
       }
 
       attemptedUserIdRef.current = userId;
+      inFlightInventoryRefreshRef.current = null;
       operationGenerationRef.current += 1;
       const requestId = ++loadRequestIdRef.current;
       const inventoryVersionAtLoadStart =
@@ -725,7 +726,7 @@ export function InventoryProvider({
       promise: Promise.resolve(),
       rerun: false,
     };
-    const promise = (async () => {
+    const refreshPromise = (async () => {
       setInventorySyncStatus("refreshing");
       setInventorySyncError(null);
 
@@ -770,14 +771,16 @@ export function InventoryProvider({
         }
 
         if (!refreshState.rerun) {
-          if (inFlightInventoryRefreshRef.current === refreshState) {
-            inFlightInventoryRefreshRef.current = null;
-          }
           return;
         }
       }
     })();
 
+    const promise = refreshPromise.finally(() => {
+      if (inFlightInventoryRefreshRef.current === refreshState) {
+        inFlightInventoryRefreshRef.current = null;
+      }
+    });
     refreshState.promise = promise;
     inFlightInventoryRefreshRef.current = refreshState;
     return promise;
