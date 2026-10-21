@@ -74,6 +74,12 @@ function formatPrice(price: number) {
   })}`;
 }
 
+function parseQuantity(value: string) {
+  if (!/^\d+$/.test(value)) return null;
+  const quantity = Number(value);
+  return Number.isSafeInteger(quantity) && quantity >= 1 ? quantity : null;
+}
+
 function mapProduct(row: ProductRow): Product {
   return {
     id: row.id,
@@ -100,6 +106,7 @@ export default function POSOrderEditor({
       transaction.items.map((item) => [item.product.id, item.quantity])
     )
   );
+  const [quantityDrafts, setQuantityDrafts] = useState<Record<string, string>>({});
   const [customerName, setCustomerName] = useState(transaction.customerName);
   const [customerAddress, setCustomerAddress] = useState(transaction.customerAddress);
   const [customerPhone, setCustomerPhone] = useState(transaction.customerPhone);
@@ -180,6 +187,19 @@ export default function POSOrderEditor({
       delete next[productId];
       return next;
     });
+    setQuantityDrafts((current) => {
+      const next = { ...current };
+      delete next[productId];
+      return next;
+    });
+  }
+
+  function clearQuantityDraft(productId: string) {
+    setQuantityDrafts((current) => {
+      const next = { ...current };
+      delete next[productId];
+      return next;
+    });
   }
 
   function getErrorMessage(error: unknown) {
@@ -199,6 +219,14 @@ export default function POSOrderEditor({
     if (saving) return;
     if (selectedProducts.length === 0 || hasMissingProduct) {
       setErrorMessage("Every order item must be available in the product catalog.");
+      return;
+    }
+    if (
+      Object.values(quantityDrafts).some(
+        (draft) => parseQuantity(draft) === null
+      )
+    ) {
+      setErrorMessage("Item quantities must be positive whole numbers.");
       return;
     }
     if (
@@ -366,6 +394,7 @@ export default function POSOrderEditor({
       setQuantities(
         Object.fromEntries(latestItems.map((item) => [item.product_id, item.quantity]))
       );
+      setQuantityDrafts({});
       setRevisionNumber(latest.revision_number);
       setTransactionStatus(audit.current_transaction_status);
       setReason("");
@@ -467,21 +496,74 @@ export default function POSOrderEditor({
                     </td>
                     <td className="p-3 text-right">{product ? formatPrice(product.price) : "-"}</td>
                     <td className="p-3">
-                      <input
-                        aria-label={`Quantity for ${product?.name ?? id}`}
-                        className="w-full rounded-md border border-slate-300 px-2 py-1 text-center"
-                        type="number"
-                        min="1"
-                        step="1"
-                        value={quantity}
-                        disabled={saving || reloading}
-                        onChange={(event) =>
-                          setQuantities((current) => ({
-                            ...current,
-                            [id]: Number(event.target.value),
-                          }))
-                        }
-                      />
+                      <div className="mx-auto flex w-fit items-center overflow-hidden rounded-md border border-slate-300">
+                        <button
+                          type="button"
+                          aria-label={`Decrease quantity for ${product?.name ?? id}`}
+                          className="flex h-8 w-8 items-center justify-center text-lg text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          onClick={() => {
+                            clearQuantityDraft(id);
+                            setQuantities((current) => ({
+                              ...current,
+                              [id]: Math.max(1, current[id] - 1),
+                            }));
+                          }}
+                          disabled={saving || reloading || quantity <= 1}
+                        >
+                          −
+                        </button>
+                        <input
+                          type="number"
+                          min="1"
+                          step="1"
+                          inputMode="numeric"
+                          aria-label={`Quantity for ${product?.name ?? id}`}
+                          className="h-8 w-14 border-x border-slate-300 bg-transparent px-1 text-center tabular-nums text-slate-900 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-slate-500"
+                          value={quantityDrafts[id] ?? String(quantity)}
+                          disabled={saving || reloading}
+                          onChange={(event) => {
+                            const draft = event.target.value;
+                            setQuantityDrafts((current) => ({
+                              ...current,
+                              [id]: draft,
+                            }));
+                            const parsedQuantity = parseQuantity(draft);
+                            if (parsedQuantity !== null) {
+                              setQuantities((current) => ({
+                                ...current,
+                                [id]: parsedQuantity,
+                              }));
+                            }
+                          }}
+                          onBlur={(event) => {
+                            const parsedQuantity = parseQuantity(
+                              event.currentTarget.value
+                            );
+                            if (parsedQuantity !== null) {
+                              setQuantities((current) => ({
+                                ...current,
+                                [id]: parsedQuantity,
+                              }));
+                            }
+                            clearQuantityDraft(id);
+                          }}
+                        />
+                        <button
+                          type="button"
+                          aria-label={`Increase quantity for ${product?.name ?? id}`}
+                          className="flex h-8 w-8 items-center justify-center text-lg text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          onClick={() => {
+                            clearQuantityDraft(id);
+                            setQuantities((current) => ({
+                              ...current,
+                              [id]: current[id] + 1,
+                            }));
+                          }}
+                          disabled={saving || reloading}
+                        >
+                          +
+                        </button>
+                      </div>
                     </td>
                     <td className="p-3 text-right">
                       {product ? formatPrice(product.price * quantity) : "-"}
