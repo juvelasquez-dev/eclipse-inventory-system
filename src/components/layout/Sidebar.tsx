@@ -5,6 +5,7 @@ import {
   ArrowUpFromLine,
   ClipboardPenLine,
   Boxes,
+  BarChart3,
   History,
   ShoppingCart,
   Store,
@@ -74,6 +75,11 @@ const posMenuItems: MenuItem[] = [
     name: "Sales History",
     path: "/pos/history",
     icon: History,
+  },
+  {
+    name: "Reports",
+    path: "/pos/reports",
+    icon: BarChart3,
   },
 ];
 

@@ -19,6 +19,7 @@ import ChangePassword from "./pages/Admin/ChangePassword";
 import SecuritySessionInfo from "./pages/Admin/SecuritySessionInfo";
 import POS from "./pages/POS/POS";
 import POSHistory from "./pages/POS/POSHistory";
+import POSReports from "./pages/POS/Reports";
 import IAOOutletOrders from "./pages/IAOOutletOrders/IAOOutletOrders";
 import IAOOutletHistory from "./pages/IAOOutletHistory/IAOOutletHistory";
 
@@ -156,6 +157,11 @@ function App() {
                 <Route
                   path="/pos/history"
                   element={<POSHistory />}
+                />
+
+                <Route
+                  path="/pos/reports"
+                  element={<POSReports />}
                 />
               </Route>
 
