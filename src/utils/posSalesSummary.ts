@@ -268,6 +268,10 @@ export function aggregateSales(
   };
 }
 
+export function filterPeriodsWithTransactions(periods: SalesPeriod[]) {
+  return periods.filter((period) => period.count > 0);
+}
+
 const INTERVAL_LABELS: Record<SalesInterval, string> = {
   DAILY: "Daily",
   WEEKLY: "Weekly",

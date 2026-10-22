@@ -21,6 +21,7 @@ import {
 import {
   aggregateSales,
   downloadSalesSummary,
+  filterPeriodsWithTransactions,
   loadSalesTransactions,
   SALES_AREAS,
   validateSalesFilters,
@@ -65,6 +66,7 @@ export default function SalesSummaryReport() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
   const [page, setPage] = useState(1);
+  const [showOnlyActive, setShowOnlyActive] = useState(false);
   const requestVersion = useRef(0);
 
   const load = useCallback(async (filters: SalesSummaryFilters) => {
@@ -117,13 +119,18 @@ export default function SalesSummaryReport() {
     ];
   }, [outlets, draft.area]);
 
-  const { summary, periods } = useMemo(
+  const { summary, periods: allPeriods } = useMemo(
     () =>
       aggregateSales(transactions, applied.interval, {
         startDate: applied.startDate,
         endDate: applied.endDate,
       }),
     [transactions, applied.interval, applied.startDate, applied.endDate]
+  );
+  const periods = useMemo(
+    () =>
+      showOnlyActive ? filterPeriodsWithTransactions(allPeriods) : allPeriods,
+    [allPeriods, showOnlyActive]
   );
 
   const totalPages = Math.max(1, Math.ceil(periods.length / PAGE_SIZE));
@@ -262,6 +269,19 @@ export default function SalesSummaryReport() {
         </Button>
       </div>
 
+      <label className="flex items-center gap-2 text-sm text-slate-700">
+        <input
+          type="checkbox"
+          checked={showOnlyActive}
+          onChange={(event) => {
+            setShowOnlyActive(event.target.checked);
+            setPage(1);
+          }}
+          className="h-4 w-4 rounded border-slate-300"
+        />
+        Show only periods with transactions
+      </label>
+
       {error && (
         <p
           role="alert"
@@ -286,6 +306,12 @@ export default function SalesSummaryReport() {
           </div>
         ))}
       </div>
+
+      {!isLoading && !error && transactions.length > 0 && periods.length === 0 && (
+        <p className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+          No periods with transactions to display.
+        </p>
+      )}
 
       {!isLoading && !error && transactions.length === 0 && (
         <p className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
