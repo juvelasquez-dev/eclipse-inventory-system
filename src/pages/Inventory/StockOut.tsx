@@ -1,7 +1,4 @@
-import {
-  useRef,
-  useState,
-} from "react";
+import { useState } from "react";
 
 import Button from "../../components/ui/Button";
 import Input from "../../components/ui/Input";
@@ -11,20 +8,8 @@ import StockTable from "../../components/inventory/StockTable";
 import TransactionForm from "../../components/inventory/TransactionForm";
 
 import { useInventory } from "../../hooks/useInventory";
-import {
-  calendarDateToBusinessKey,
-  combineBusinessDateAndTime,
-} from "../../utils/businessDate";
 import { useToast } from "../../context/ToastContext";
 import { categories } from "../../mock/categories";
-
-import {
-  readStockExcel,
-  validateStockRows,
-  splitZeroQuantityStockInRows,
-  exportStockTemplate,
-  type ExcelValidationResult,
-} from "../../utils/excel";
 
 export default function StockOut() {
   /*
@@ -34,24 +19,6 @@ export default function StockOut() {
    */
 
   const [open, setOpen] = useState(false);
-
-  const [importOpen, setImportOpen] =
-    useState(false);
-
-  const [importRows, setImportRows] =
-    useState<ExcelValidationResult[]>([]);
-
-  const [importFileName, setImportFileName] =
-    useState("");
-
-  const [skippedZeroCount, setSkippedZeroCount] =
-    useState(0);
-
-  const [importLoading, setImportLoading] =
-    useState(false);
-
-  const fileInputRef =
-    useRef<HTMLInputElement>(null);
 
   /*
    * =========================================================
@@ -92,6 +59,16 @@ export default function StockOut() {
     quantity: number;
     remarks: string;
   }) {
+    if (
+      !Number.isSafeInteger(data.quantity) ||
+      data.quantity <= 0
+    ) {
+      showToast(
+        "Quantity must be a positive whole number."
+      );
+      return;
+    }
+
     const product = products.find(
       (product) =>
         product.id === data.productId
@@ -106,15 +83,25 @@ export default function StockOut() {
      * Check against the CURRENT INVENTORY
      * stock, not the transaction history.
      */
+    const currentStock =
+      getProductStock(data.productId);
+
+    if (
+      !Number.isSafeInteger(currentStock) ||
+      currentStock < 0
+    ) {
+      showToast(
+        "Current stock is unavailable or invalid. Refresh inventory or reconcile stock before continuing."
+      );
+      return;
+    }
+
     if (
       !hasEnoughStock(
         data.productId,
         data.quantity
       )
     ) {
-      const currentStock =
-        getProductStock(data.productId);
-
       showToast(
         `Insufficient stock. Available: ${currentStock}.`
       );
@@ -145,262 +132,6 @@ export default function StockOut() {
     );
 
     setOpen(false);
-  }
-
-  /*
-   * =========================================================
-   * EXCEL IMPORT
-   * =========================================================
-   */
-
-  function handleImportClick() {
-    fileInputRef.current?.click();
-  }
-
-  function handleDownloadTemplate() {
-    exportStockTemplate(
-      products,
-      "OUT"
-    );
-  }
-
-  /*
-   * Read and validate Excel file.
-   *
-   * IMPORTANT:
-   * getProductStock() now reads from the inventory
-   * table, so Stock Out validation uses the real
-   * current stock.
-   */
-  async function handleExcelChange(
-    event: React.ChangeEvent<HTMLInputElement>
-  ) {
-    const file =
-      event.target.files?.[0];
-
-    if (!file) {
-      return;
-    }
-
-    setImportLoading(true);
-    setImportFileName(file.name);
-
-    try {
-      const rows =
-        await readStockExcel(file);
-
-      const {
-        rows: importableRows,
-        skippedCount,
-      } =
-        splitZeroQuantityStockInRows(rows);
-
-      if (
-        rows.length > 0 &&
-        importableRows.length === 0
-      ) {
-        showToast(
-          "No stock-out quantities to import."
-        );
-        return;
-      }
-
-      const validationResults =
-        validateStockRows(
-          importableRows,
-          products,
-          "OUT",
-          getProductStock
-        );
-
-      setImportRows(
-        validationResults
-      );
-      setSkippedZeroCount(skippedCount);
-
-      setImportOpen(true);
-    } catch (error) {
-      console.error(
-        "Excel import error:",
-        error
-      );
-
-      showToast(
-        error instanceof Error
-          ? error.message
-          : "Failed to read Excel file."
-      );
-    } finally {
-      setImportLoading(false);
-
-      /*
-       * Allow the same file to be selected
-       * again later.
-       */
-      event.target.value = "";
-    }
-  }
-
-  /*
-   * =========================================================
-   * IMPORT RESULTS
-   * =========================================================
-   */
-
-  const validImportRows =
-    importRows.filter(
-      (row) => row.valid
-    );
-
-  const invalidImportRows =
-    importRows.filter(
-      (row) => !row.valid
-    );
-
-  /*
-   * =========================================================
-   * CONFIRM EXCEL IMPORT
-   * =========================================================
-   */
-
-  async function handleConfirmImport() {
-    /*
-     * Never allow a partial import.
-     *
-     * Every row must be valid.
-     */
-    if (
-      importRows.length === 0 ||
-      invalidImportRows.length > 0
-    ) {
-      return;
-    }
-
-    /*
-     * Use ONE timestamp for the entire
-     * Excel import.
-     *
-     * This prevents every row from having
-     * a slightly different time.
-     */
-    const importNow = new Date();
-
-    let successCount = 0;
-    const failedRows: {
-      rowNumber: number;
-      productCode: string;
-    }[] = [];
-
-    for (const row of validImportRows) {
-      const product =
-        products.find(
-          (product) =>
-            product.code
-              .trim()
-              .toLowerCase() ===
-            row.productCode
-              .trim()
-              .toLowerCase()
-        );
-
-      /*
-       * This should never happen because
-       * validation already checks the code.
-       */
-      if (!product) {
-        continue;
-      }
-
-      let transactionDate =
-        importNow;
-
-      /*
-       * If Excel contains a date,
-       * preserve that date but use the
-       * SAME import time for every row.
-       */
-      if (row.date) {
-        const dateKey =
-          calendarDateToBusinessKey(
-            row.date
-          );
-
-        if (dateKey) {
-          transactionDate =
-            combineBusinessDateAndTime(
-              dateKey,
-              importNow
-            );
-        }
-      }
-
-      const success = await addTransaction({
-        id: crypto.randomUUID(),
-        productId: product.id,
-        type: "OUT",
-        quantity: row.quantity,
-        date:
-          transactionDate.toISOString(),
-        remarks:
-          row.remarks ??
-          "Excel import",
-      });
-
-      if (success) {
-        successCount++;
-      } else {
-        failedRows.push({
-          rowNumber: row.rowNumber,
-          productCode: row.productCode,
-        });
-      }
-    }
-
-    if (failedRows.length === 0) {
-      showToast(
-        `${validImportRows.length} stock-out record${
-          validImportRows.length === 1
-            ? ""
-            : "s"
-        } imported successfully.`
-      );
-
-      handleCancelImport();
-      return;
-    }
-
-    const failedRowNumbers = failedRows
-      .map((row) => row.rowNumber)
-      .join(", ");
-
-    if (successCount === 0) {
-      showToast(
-        `Import failed. ${failedRows.length} row${
-          failedRows.length === 1 ? "" : "s"
-        } could not be saved (row${
-          failedRows.length === 1 ? "" : "s"
-        } ${failedRowNumbers}).`
-      );
-    } else {
-      showToast(
-        `${successCount} succeeded, ${failedRows.length} failed. Failed row${
-          failedRows.length === 1 ? "" : "s"
-        }: ${failedRowNumbers}.`
-      );
-    }
-  }
-
-  /*
-   * =========================================================
-   * CANCEL EXCEL IMPORT
-   * =========================================================
-   */
-
-  function handleCancelImport() {
-    setImportRows([]);
-    setSkippedZeroCount(0);
-    setImportFileName("");
-    setImportOpen(false);
   }
 
   /*
@@ -498,39 +229,6 @@ export default function StockOut() {
             </div>
 
             <div className="flex flex-col gap-2 sm:flex-row">
-
-              {/* Hidden Excel input */}
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".xlsx,.xls"
-                className="hidden"
-                onChange={
-                  handleExcelChange
-                }
-              />
-
-              <Button
-                variant="secondary"
-                onClick={
-                  handleDownloadTemplate
-                }
-              >
-                Download Stock Out Template
-              </Button>
-
-              <Button
-                onClick={
-                  handleImportClick
-                }
-                disabled={
-                  importLoading
-                }
-              >
-                {importLoading
-                  ? "Reading..."
-                  : "Import Excel"}
-              </Button>
 
               <Button
                 onClick={() =>
@@ -648,264 +346,6 @@ export default function StockOut() {
               handleSubmit
             }
           />
-
-        </Modal>
-
-        {/* =====================================================
-            EXCEL IMPORT MODAL
-            ===================================================== */}
-
-        <Modal
-          open={importOpen}
-          title="Import Stock Out"
-          onClose={
-            handleCancelImport
-          }
-        >
-
-          <div className="space-y-5">
-
-            {/* File */}
-            <div className="rounded-xl bg-slate-50 border border-slate-200 p-4">
-
-              <p className="text-xs font-medium text-slate-500">
-                File
-              </p>
-
-              <p className="mt-1 text-sm font-semibold text-slate-900">
-                {importFileName}
-              </p>
-
-            </div>
-
-            {/* Summary */}
-            <div className="grid grid-cols-2 gap-4">
-
-              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-
-                <p className="text-xs text-emerald-700">
-                  Valid rows
-                </p>
-
-                <p className="mt-1 text-2xl font-bold text-emerald-700">
-                  {validImportRows.length}
-                </p>
-
-              </div>
-
-              <div className="rounded-xl border border-red-200 bg-red-50 p-4">
-
-                <p className="text-xs text-red-700">
-                  Invalid rows
-                </p>
-
-                <p className="mt-1 text-2xl font-bold text-red-700">
-                  {invalidImportRows.length}
-                </p>
-
-              </div>
-
-            </div>
-
-            {skippedZeroCount > 0 && (
-              <p className="text-sm text-slate-500">
-                <span className="font-semibold">
-                  {skippedZeroCount}
-                </span>{" "}
-                skipped (zero or blank quantity)
-              </p>
-            )}
-
-            {/* Validation Table */}
-            {importRows.length > 0 && (
-
-              <div className="max-h-80 overflow-auto rounded-xl border border-slate-200">
-
-                <table className="w-full text-sm">
-
-                  <thead className="sticky top-0 bg-slate-50 border-b border-slate-200">
-
-                    <tr>
-
-                      <th className="px-4 py-3 text-left font-semibold text-slate-600">
-                        Row
-                      </th>
-
-                      <th className="px-4 py-3 text-left font-semibold text-slate-600">
-                        Product Code
-                      </th>
-
-                      <th className="px-4 py-3 text-left font-semibold text-slate-600">
-                        Quantity
-                      </th>
-
-                      <th className="px-4 py-3 text-left font-semibold text-slate-600">
-                        Status
-                      </th>
-
-                    </tr>
-
-                  </thead>
-
-                  <tbody className="divide-y divide-slate-200">
-
-                    {importRows.map(
-                      (row) => (
-
-                        <tr
-                          key={
-                            row.rowNumber
-                          }
-                        >
-
-                          <td className="px-4 py-3 text-slate-500">
-                            {row.rowNumber}
-                          </td>
-
-                          <td className="px-4 py-3 font-medium text-slate-900">
-                            {row.productCode ||
-                              "-"}
-                          </td>
-
-                          <td className="px-4 py-3 text-slate-700">
-                            {row.quantity}
-                          </td>
-
-                          <td className="px-4 py-3">
-
-                            {row.valid ? (
-
-                              <div>
-
-                                <span className="inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
-                                  Valid
-                                </span>
-
-                              </div>
-
-                            ) : (
-
-                              <div>
-
-                                <span className="inline-flex rounded-full bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700">
-                                  Invalid
-                                </span>
-
-                                <div className="mt-2 space-y-1">
-
-                                  {row.errors.map(
-                                    (
-                                      error,
-                                      index
-                                    ) => (
-
-                                      <p
-                                        key={
-                                          index
-                                        }
-                                        className="text-xs text-red-600"
-                                      >
-                                        {error}
-                                      </p>
-
-                                    )
-                                  )}
-
-                                </div>
-
-                              </div>
-
-                            )}
-
-                          </td>
-
-                        </tr>
-
-                      )
-                    )}
-
-                  </tbody>
-
-                </table>
-
-              </div>
-
-            )}
-
-            {/* Import blocked */}
-            {invalidImportRows.length >
-              0 && (
-
-              <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3">
-
-                <p className="text-sm font-semibold text-red-700">
-                  Import blocked
-                </p>
-
-                <p className="mt-1 text-xs text-red-600">
-                  All rows must be valid
-                  before the Stock Out
-                  import can be confirmed.
-                </p>
-
-              </div>
-
-            )}
-
-            {/* Ready */}
-            {invalidImportRows.length ===
-              0 &&
-              importRows.length > 0 && (
-
-              <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
-
-                <p className="text-sm font-semibold text-amber-800">
-                  Ready to import
-                </p>
-
-                <p className="mt-1 text-xs text-amber-700">
-                  {validImportRows.length}{" "}
-                  stock-out{" "}
-                  {validImportRows.length ===
-                  1
-                    ? "record"
-                    : "records"}{" "}
-                  will be released from
-                  inventory.
-                </p>
-
-              </div>
-
-            )}
-
-            {/* Actions */}
-            <div className="flex justify-end gap-3">
-
-              <Button
-                onClick={
-                  handleCancelImport
-                }
-              >
-                Cancel
-              </Button>
-
-              <Button
-                onClick={
-                  handleConfirmImport
-                }
-                disabled={
-                  importRows.length ===
-                    0 ||
-                  invalidImportRows.length >
-                    0
-                }
-              >
-                Confirm Import
-              </Button>
-
-            </div>
-
-          </div>
 
         </Modal>
 

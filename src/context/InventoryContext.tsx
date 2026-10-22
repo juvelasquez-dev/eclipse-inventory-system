@@ -165,6 +165,19 @@ async function fetchAllTransactions(): Promise<Transaction[]> {
   return Array.from(uniqueRows.values()).map(mapTransaction);
 }
 
+async function fetchAllProducts(): Promise<Product[]> {
+  const { data, error } = await supabase
+    .from("products")
+    .select("*")
+    .order("id");
+
+  if (error) {
+    throw error;
+  }
+
+  return (data ?? []).map(mapProduct);
+}
+
 function getErrorMessage(error: unknown) {
   if (error instanceof Error) {
     return error.message;
@@ -412,20 +425,13 @@ export function InventoryProvider({
       setInventorySyncError(null);
 
       const promise = (async () => {
-        const [productResult, transactionResult, outletResult] =
+        const [
+          productResult,
+          transactionResult,
+          outletResult,
+        ] =
           await Promise.all([
-            captureLoad(async () => {
-              const { data, error } = await supabase
-                .from("products")
-                .select("*")
-                .order("id");
-
-              if (error) {
-                throw error;
-              }
-
-              return (data ?? []).map(mapProduct);
-            }),
+            captureLoad(fetchAllProducts),
             captureLoad(fetchAllTransactions),
             captureLoad(async () => {
               const { data, error } = await supabase
@@ -460,8 +466,6 @@ export function InventoryProvider({
           errors.push(
             `Products: ${getErrorMessage(productResult.error)}`
           );
-        } else {
-          setProducts(productResult.data);
         }
 
         if (!transactionResult.succeeded) {
@@ -472,28 +476,38 @@ export function InventoryProvider({
           errors.push(
             `Transactions: ${getErrorMessage(transactionResult.error)}`
           );
+        }
+
+        if (
+          inventoryVersionAtLoadStart ===
+          inventoryInvalidationVersionRef.current
+        ) {
           if (
-            inventoryVersionAtLoadStart ===
-            inventoryInvalidationVersionRef.current
+            productResult.succeeded &&
+            transactionResult.succeeded
           ) {
-            setInventorySyncStatus("error");
-            setInventorySyncError(
-              `Unable to refresh inventory: ${getErrorMessage(transactionResult.error)}`
-            );
-          }
-        } else {
-          if (
-            inventoryVersionAtLoadStart ===
-            inventoryInvalidationVersionRef.current
-          ) {
-            inventoryInvalidationVersionRef.current += 1;
+            setProducts(productResult.data);
             setTransactions(transactionResult.data);
+            inventoryInvalidationVersionRef.current += 1;
             setInventoryLastSyncedAt(Date.now());
             setInventorySyncStatus("fresh");
             setInventorySyncError(null);
           } else {
-            setInventoryRefreshPending(true);
+            const inventoryErrors = [
+              !productResult.succeeded
+                ? `Products: ${getErrorMessage(productResult.error)}`
+                : null,
+              !transactionResult.succeeded
+                ? `Transactions: ${getErrorMessage(transactionResult.error)}`
+                : null,
+            ].filter((message): message is string => message !== null);
+            setInventorySyncStatus("error");
+            setInventorySyncError(
+              `Unable to refresh inventory. ${inventoryErrors.join(" ")}`
+            );
           }
+        } else {
+          setInventoryRefreshPending(true);
         }
 
         if (!outletResult.succeeded) {
@@ -736,7 +750,11 @@ export function InventoryProvider({
           inventoryInvalidationVersionRef.current;
 
         try {
-          const loadedTransactions = await fetchAllTransactions();
+          const [productResult, transactionResult] =
+            await Promise.all([
+              captureLoad(fetchAllProducts),
+              captureLoad(fetchAllTransactions),
+            ]);
           if (!isCurrentOperation(operation)) return;
 
           if (
@@ -747,8 +765,25 @@ export function InventoryProvider({
             continue;
           }
 
+          if (
+            !productResult.succeeded ||
+            !transactionResult.succeeded
+          ) {
+            const errors = [
+              !productResult.succeeded
+                ? `Products: ${getErrorMessage(productResult.error)}`
+                : null,
+              !transactionResult.succeeded
+                ? `Transactions: ${getErrorMessage(transactionResult.error)}`
+                : null,
+            ].filter((message): message is string => message !== null);
+
+            throw new Error(errors.join(" "));
+          }
+
+          setProducts(productResult.data);
+          setTransactions(transactionResult.data);
           inventoryInvalidationVersionRef.current += 1;
-          setTransactions(loadedTransactions);
           setInventoryLastSyncedAt(Date.now());
           setInventorySyncStatus("fresh");
           setInventorySyncError(null);
@@ -986,6 +1021,8 @@ export function InventoryProvider({
       ...prev,
       mapProduct(data),
     ]);
+    markInventoryStale();
+    void loadTransactions();
 
     return true;
   }

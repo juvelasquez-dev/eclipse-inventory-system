@@ -181,11 +181,17 @@ export function validateStockRows(
         .trim()
         .toLowerCase();
 
-    quantityByProduct.set(
-      code,
-      (quantityByProduct.get(code) ??
-        0) + row.quantity
-    );
+    // Invalid quantities are rejected per row and must not poison the aggregate.
+    if (
+      Number.isFinite(row.quantity) &&
+      row.quantity > 0
+    ) {
+      quantityByProduct.set(
+        code,
+        (quantityByProduct.get(code) ??
+          0) + row.quantity
+      );
+    }
   }
 
   return rows.map((row) => {
@@ -229,6 +235,13 @@ export function validateStockRows(
       errors.push(
         "Quantity must be greater than 0."
       );
+    } else if (
+      mode === "OUT" &&
+      !Number.isSafeInteger(row.quantity)
+    ) {
+      errors.push(
+        "Quantity must be a whole number."
+      );
     }
 
     /*
@@ -252,31 +265,40 @@ export function validateStockRows(
     /*
      * Stock Out availability
      */
-    if (
-      mode === "OUT" &&
-      product &&
-      Number.isFinite(
-        row.quantity
-      ) &&
-      row.quantity > 0
-    ) {
-      const requestedQuantity =
-        quantityByProduct.get(
-          code
-        ) ?? 0;
-
+    if (mode === "OUT" && product) {
       const availableStock =
         getProductStock(
           product.id
         );
 
       if (
-        requestedQuantity >
-        availableStock
+        !Number.isSafeInteger(
+          availableStock
+        ) ||
+        availableStock < 0
       ) {
         errors.push(
-          `Insufficient stock. Available: ${availableStock}, requested: ${requestedQuantity}.`
+          "Current stock is unavailable or invalid. Refresh inventory or reconcile stock before importing."
         );
+      } else if (
+        Number.isFinite(
+          row.quantity
+        ) &&
+        row.quantity > 0
+      ) {
+        const requestedQuantity =
+          quantityByProduct.get(
+            code
+          ) ?? 0;
+
+        if (
+          requestedQuantity >
+          availableStock
+        ) {
+          errors.push(
+            `Insufficient stock. Available: ${availableStock}, requested: ${requestedQuantity}.`
+          );
+        }
       }
     }
 
