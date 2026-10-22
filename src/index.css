@@ -788,6 +788,8 @@ textarea {
 
   .dr-footer p {
     margin: 2px 0;
+    text-wrap: balance;
+    overflow-wrap: break-word;
   }
 
   .dr-footer-number {
@@ -998,21 +1000,6 @@ textarea {
     justify-self: center;
     width: 0;
     border-left: 0.25mm dashed #aaa;
-  }
-
-  .a5-two-copy-sheet .a5-dr-copy-label {
-    position: absolute;
-    top: 1.5mm;
-    right: 7mm;
-    left: 7mm;
-    margin: 0;
-    color: #555;
-    font-family: Arial, sans-serif;
-    font-size: 7.5px;
-    font-weight: 600;
-    letter-spacing: 0.35px;
-    line-height: 1;
-    text-align: center;
   }
 
   .a5-two-copy-sheet .a5-dr-header {

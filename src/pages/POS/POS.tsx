@@ -10,6 +10,7 @@ import type { ReceiptData } from "../../components/pos/DeliveryReceiptPrint";
 
 import { useToast } from "../../context/ToastContext";
 import { useInventory } from "../../hooks/useInventory";
+import { resolveReceiptParties } from "../../utils/receiptParties";
 import { supabase } from "../../lib/supabase";
 import { printReceipt as printReceiptInFormat } from "../../utils/receiptPrinting";
 import {
@@ -802,6 +803,10 @@ export default function POS() {
 
     setCheckoutOpen(false);
   }
+
+  const receiptParties = receipt
+    ? resolveReceiptParties(receipt, outlets)
+    : { outletName: "", contactPerson: "" };
 
   function handleSelectOutlet(outlet: Outlet) {
     setSelectedOutlet(outlet);
@@ -2832,8 +2837,13 @@ export default function POS() {
             </div>
 
             <div className="dr-info-row">
+              <span>Outlet</span>
+              <strong className="dr-wrap">{receiptParties.outletName}</strong>
+            </div>
+
+            <div className="dr-info-row">
               <span>Customer</span>
-              <strong>{receipt.customerName}</strong>
+              <strong className="dr-wrap">{receiptParties.contactPerson || "-"}</strong>
             </div>
 
             <div className="dr-info-row">
@@ -2900,24 +2910,6 @@ export default function POS() {
               <span>Subtotal</span>
               <strong>{formatPrice(receipt.subtotal)}</strong>
             </div>
-
-            <div className="dr-total-row">
-              <span>Checkout Amount Estimate</span>
-              <strong>
-                {formatPrice(receipt.amountReceived)}
-              </strong>
-            </div>
-
-            <div className="dr-total-row">
-              <span>Estimated Change</span>
-              <strong>
-                {formatPrice(receipt.changeAmount)}
-              </strong>
-            </div>
-
-            <p className="text-xs text-slate-500">
-              Estimates only. Actual payment is collected upon delivery.
-            </p>
 
             <div className="dr-total-row">
               <span>Payment</span>

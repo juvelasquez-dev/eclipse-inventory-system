@@ -26,9 +26,16 @@ const customerLineCharacters = 48;
  * The customer block and cancellation banner sit above the checklist, so
  * long wrapped customer text or a cancelled receipt shrinks the checklist area.
  */
-export function getA5ReceiptHeaderExtraMm(receipt: ReceiptData): number {
+export function getA5ReceiptHeaderExtraMm(
+  receipt: ReceiptData,
+  parties: { outletName: string; contactPerson: string } = {
+    outletName: receipt.customerName,
+    contactPerson: "",
+  }
+): number {
   const wrappedLines = [
-    `CUSTOMER: ${receipt.customerName}`,
+    `OUTLET: ${parties.outletName}`,
+    `CUSTOMER: ${parties.contactPerson || "-"}`,
     `ADDRESS: ${receipt.customerAddress}`,
     `CONTACT NO.: ${receipt.customerPhone}`,
   ].reduce(
@@ -36,8 +43,9 @@ export function getA5ReceiptHeaderExtraMm(receipt: ReceiptData): number {
       total + Math.max(0, Math.ceil(line.length / customerLineCharacters) - 1),
     0
   );
+  // The OUTLET line is one extra line beyond the measured three-field header.
   return (
-    wrappedLines * customerLineHeightMm +
+    (wrappedLines + 1) * customerLineHeightMm +
     (receipt.transactionStatus === "CANCELLED" ? cancelledBannerHeightMm : 0)
   );
 }

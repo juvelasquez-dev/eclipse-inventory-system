@@ -1,6 +1,8 @@
 import { createPortal } from "react-dom";
 
 import type { Product } from "../../types/inventory";
+import { useInventory } from "../../hooks/useInventory";
+import { resolveReceiptParties } from "../../utils/receiptParties";
 
 export interface ReceiptItem {
   product: Product;
@@ -41,10 +43,12 @@ function formatPrice(price: number) {
 export default function DeliveryReceiptPrint({
   receipt,
 }: DeliveryReceiptPrintProps) {
+  const { outlets } = useInventory();
   if (!receipt || typeof document === "undefined") {
     return null;
   }
 
+  const parties = resolveReceiptParties(receipt, outlets);
   const isCancelled = receipt.transactionStatus === "CANCELLED";
 
   return createPortal(
@@ -127,8 +131,12 @@ export default function DeliveryReceiptPrint({
           </strong>
         </div>
         <div className="dr-info-row">
+          <span>Outlet</span>
+          <strong className="dr-wrap">{parties.outletName}</strong>
+        </div>
+        <div className="dr-info-row">
           <span>Customer</span>
-          <strong>{receipt.customerName}</strong>
+          <strong className="dr-wrap">{parties.contactPerson || "-"}</strong>
         </div>
         <div className="dr-info-row">
           <span>Address</span>
@@ -184,18 +192,6 @@ export default function DeliveryReceiptPrint({
         <div className="dr-total-row">
           <span>Subtotal</span>
           <strong>{formatPrice(receipt.subtotal)}</strong>
-        </div>
-        <div className="dr-total-row">
-          <span>Checkout Amount Estimate</span>
-          <strong>{formatPrice(receipt.amountReceived)}</strong>
-        </div>
-        <div className="dr-total-row">
-          <span>Estimated Change</span>
-          <strong>{formatPrice(receipt.changeAmount)}</strong>
-        </div>
-        <div className="dr-total-row">
-          <span>Payment</span>
-          <strong>Actual payment is collected upon delivery; these are estimates only.</strong>
         </div>
         <div className="dr-total-row">
           <span>Payment</span>

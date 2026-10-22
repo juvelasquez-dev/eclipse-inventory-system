@@ -2,6 +2,8 @@ import { createPortal } from "react-dom";
 
 import type { ReceiptData } from "./DeliveryReceiptPrint";
 import type { Product } from "../../types/inventory";
+import { useInventory } from "../../hooks/useInventory";
+import { resolveReceiptParties } from "../../utils/receiptParties";
 import { categories } from "../../mock/categories";
 import {
   getA5CategorySubtotals,
@@ -51,10 +53,12 @@ export default function A5DeliveryReceiptPrint({
   products,
   inventory,
 }: A5DeliveryReceiptPrintProps) {
+  const { outlets } = useInventory();
   if (!receipt || typeof document === "undefined") {
     return null;
   }
 
+  const parties = resolveReceiptParties(receipt, outlets);
   const currentProductIds = new Set(products.map((product) => product.id));
   const currentStockById = new Map(
     inventory.map((product) => [product.id, product.stock])
@@ -101,7 +105,7 @@ export default function A5DeliveryReceiptPrint({
     catalogGroups.map((group) => group.items.length),
     catalogGroups.map((group) => group.subtotal !== null),
     unstockedCategorySubtotals.length + (unlistedSubtotal > 0 ? 1 : 0),
-    getA5ReceiptHeaderExtraMm(receipt)
+    getA5ReceiptHeaderExtraMm(receipt, parties)
   );
   const leftItemCount = split?.leftItemCount ?? 0;
   let remainingLeftItems = leftItemCount;
@@ -124,10 +128,8 @@ export default function A5DeliveryReceiptPrint({
     remainingLeftItems -= leftCount;
   }
   const isCancelled = receipt.transactionStatus === "CANCELLED";
-  const renderCopy = (copyLabel: string) => (
+  const renderCopy = () => (
     <article className="a5-delivery-receipt">
-      <p className="a5-dr-copy-label">{copyLabel}</p>
-
       <header className="a5-dr-header">
         <p className="a5-dr-company">ECLIPSE FOOD TRADING OPC</p>
         <p className="a5-dr-distributor">
@@ -139,7 +141,8 @@ export default function A5DeliveryReceiptPrint({
 
       <section className="a5-dr-identification">
         <div className="a5-dr-customer">
-          <p><strong>CUSTOMER:</strong> {receipt.customerName}</p>
+          <p><strong>OUTLET:</strong> {parties.outletName}</p>
+          <p><strong>CUSTOMER:</strong> {parties.contactPerson || "-"}</p>
           <p><strong>ADDRESS:</strong> {receipt.customerAddress}</p>
           <p><strong>CONTACT NO.:</strong> {receipt.customerPhone}</p>
         </div>
@@ -227,9 +230,9 @@ export default function A5DeliveryReceiptPrint({
 
   return createPortal(
     <section className="a5-two-copy-sheet" aria-label="Two delivery receipt copies">
-      {renderCopy("DELIVERY DRIVER COPY")}
+      {renderCopy()}
       <div className="a5-dr-cut-guide" aria-hidden="true" />
-      {renderCopy("OUTLET COPY")}
+      {renderCopy()}
     </section>,
     document.body
   );
