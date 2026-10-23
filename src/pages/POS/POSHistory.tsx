@@ -15,6 +15,7 @@ import POSOrderEditor, {
 import { useInventoryContext } from "../../context/InventoryContext";
 import { useToast } from "../../context/ToastContext";
 import { supabase } from "../../lib/supabase";
+import { sortByProductGroup } from "../../utils/productGroupOrder";
 import {
   printReceipt as printReceiptInFormat,
   type ReceiptPrintFormat,
@@ -1818,7 +1819,11 @@ export default function POSHistory() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {selectedTransaction.items.map((item) => (
+                  {sortByProductGroup(
+                    selectedTransaction.items,
+                    (item) => item.product,
+                    products
+                  ).map((item) => (
                     <tr key={item.product.id}>
                       <td className="px-3 py-3 font-medium text-slate-900">{item.product.name}</td>
                       <td className="px-3 py-3 text-slate-500">{item.product.code}</td>

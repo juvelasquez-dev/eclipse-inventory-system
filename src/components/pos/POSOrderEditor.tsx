@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 
 import Button from "../ui/Button";
 import Input from "../ui/Input";
@@ -6,6 +6,7 @@ import Modal from "../ui/Modal";
 import Select from "../ui/Select";
 import { supabase } from "../../lib/supabase";
 import type { Product } from "../../types/inventory";
+import { sortByProductGroup } from "../../utils/productGroupOrder";
 import type { ReceiptItem } from "./DeliveryReceiptPrint";
 
 export interface EditablePOSTransaction {
@@ -106,6 +107,12 @@ export default function POSOrderEditor({
       transaction.items.map((item) => [item.product.id, item.quantity])
     )
   );
+  const [originalQuantities, setOriginalQuantities] = useState<Record<string, number>>(() =>
+    Object.fromEntries(
+      transaction.items.map((item) => [item.product.id, item.quantity])
+    )
+  );
+  const [removedQuantities, setRemovedQuantities] = useState<Record<string, number>>({});
   const [quantityDrafts, setQuantityDrafts] = useState<Record<string, string>>({});
   const [customerName, setCustomerName] = useState(transaction.customerName);
   const [customerAddress, setCustomerAddress] = useState(transaction.customerAddress);
@@ -154,16 +161,53 @@ export default function POSOrderEditor({
     };
   }, []);
 
+  const snapshotProducts = useMemo(
+    () => new Map(transaction.items.map((item) => [item.product.id, item.product])),
+    [transaction.items]
+  );
   const selectedProducts = useMemo(
     () =>
-      Object.entries(quantities)
-        .filter(([, quantity]) => quantity > 0)
-        .map(([id, quantity]) => ({
+      sortByProductGroup(
+        Object.entries(quantities)
+          .filter(([, quantity]) => quantity > 0)
+          .map(([id, quantity]) => ({
+            product: products.find((product) => product.id === id),
+            id,
+            quantity,
+          })),
+        ({ id, product }) => {
+          const snapshot = snapshotProducts.get(id);
+          return {
+            id,
+            code: product?.code ?? snapshot?.code ?? "",
+            name: product?.name ?? snapshot?.name ?? id,
+            category: product?.category,
+          };
+        }
+      ),
+    [products, quantities, snapshotProducts]
+  );
+  const originalRows = selectedProducts.filter(({ id }) => id in originalQuantities);
+  const addedRows = selectedProducts.filter(({ id }) => !(id in originalQuantities));
+  const removedRows = useMemo(
+    () =>
+      sortByProductGroup(
+        Object.entries(removedQuantities).map(([id, quantity]) => ({
           product: products.find((product) => product.id === id),
           id,
           quantity,
         })),
-    [products, quantities]
+        ({ id, product }) => {
+          const snapshot = snapshotProducts.get(id);
+          return {
+            id,
+            code: product?.code ?? snapshot?.code ?? "",
+            name: product?.name ?? snapshot?.name ?? id,
+            category: product?.category,
+          };
+        }
+      ),
+    [products, removedQuantities, snapshotProducts]
   );
   const hasMissingProduct = selectedProducts.some(({ product }) => !product);
   const total = selectedProducts.reduce(
@@ -178,10 +222,22 @@ export default function POSOrderEditor({
       ...current,
       [productToAdd]: current[productToAdd] ?? 1,
     }));
+    setRemovedQuantities((current) => {
+      const next = { ...current };
+      delete next[productToAdd];
+      return next;
+    });
     setProductToAdd("");
   }
 
   function removeProduct(productId: string) {
+    const removedQuantity = quantities[productId];
+    if (removedQuantity > 0) {
+      setRemovedQuantities((current) => ({
+        ...current,
+        [productId]: removedQuantity,
+      }));
+    }
     setQuantities((current) => {
       const next = { ...current };
       delete next[productId];
@@ -394,6 +450,10 @@ export default function POSOrderEditor({
       setQuantities(
         Object.fromEntries(latestItems.map((item) => [item.product_id, item.quantity]))
       );
+      setOriginalQuantities(
+        Object.fromEntries(latestItems.map((item) => [item.product_id, item.quantity]))
+      );
+      setRemovedQuantities({});
       setQuantityDrafts({});
       setRevisionNumber(latest.revision_number);
       setTransactionStatus(audit.current_transaction_status);
@@ -488,8 +548,19 @@ export default function POSOrderEditor({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {selectedProducts.map(({ id, product, quantity }) => (
-                  <tr key={id}>
+                {[...originalRows, ...addedRows].map(({ id, product, quantity }, index) => (
+                  <Fragment key={id}>
+                  {index === 0 && originalRows.length > 0 && (
+                    <tr className="bg-slate-100 text-xs font-semibold uppercase text-slate-600">
+                      <td className="px-3 py-2" colSpan={5}>Original Order Items</td>
+                    </tr>
+                  )}
+                  {index === originalRows.length && addedRows.length > 0 && (
+                    <tr className="bg-emerald-50 text-xs font-semibold uppercase text-emerald-800">
+                      <td className="px-3 py-2" colSpan={5}>Newly Added Items</td>
+                    </tr>
+                  )}
+                  <tr>
                     <td className="p-3">
                       <div className="font-medium">{product?.name ?? id}</div>
                       <div className="text-xs text-slate-500">{product?.code ?? "Product unavailable"}</div>
@@ -574,6 +645,7 @@ export default function POSOrderEditor({
                       </button>
                     </td>
                   </tr>
+                  </Fragment>
                 ))}
                 {selectedProducts.length === 0 && (
                   <tr><td className="p-5 text-center text-slate-500" colSpan={5}>Add at least one product.</td></tr>
@@ -588,6 +660,36 @@ export default function POSOrderEditor({
               </tfoot>
             </table>
           </div>
+          {removedRows.length > 0 && (
+            <div className="overflow-x-auto rounded-lg border border-red-200">
+              <table className="w-full min-w-[520px] text-sm">
+                <caption className="bg-red-50 p-3 text-left text-xs font-semibold uppercase text-red-800">
+                  Removed Items (not part of this order)
+                </caption>
+                <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
+                  <tr>
+                    <th className="p-3">Product</th>
+                    <th className="p-3">Code</th>
+                    <th className="p-3">Unit</th>
+                    <th className="p-3 text-right">Quantity removed</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {removedRows.map(({ id, product, quantity }) => {
+                    const snapshot = snapshotProducts.get(id);
+                    return (
+                      <tr key={id} className="text-slate-600">
+                        <td className="p-3">{product?.name ?? snapshot?.name ?? id}</td>
+                        <td className="p-3">{product?.code ?? snapshot?.code ?? "-"}</td>
+                        <td className="p-3">{product?.unit ?? snapshot?.unit ?? "-"}</td>
+                        <td className="p-3 text-right tabular-nums">{quantity}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
           <p className="text-xs text-slate-500">
             Prices shown are current catalog prices. The database re-reads authoritative prices when saving. Corrections preserve checkout estimates; they do not record actual payment, which is collected upon delivery.
           </p>
