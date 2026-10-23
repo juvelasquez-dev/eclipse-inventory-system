@@ -1118,8 +1118,22 @@ textarea {
     line-height: 1.1;
   }
 
+  .a5-two-copy-sheet .a5-dr-column-heading {
+    justify-content: flex-start;
+  }
+
+  .a5-two-copy-sheet .a5-dr-column-heading > :first-child {
+    flex: 0 0 20mm;
+  }
+
+  .a5-two-copy-sheet .a5-dr-column-heading > :last-child {
+    flex: 0 0 8mm;
+    text-align: right;
+  }
+
   .a5-two-copy-sheet .a5-dr-group-subtotal {
     justify-content: flex-end;
+    width: 29mm;
     min-height: 3.2mm;
     padding-top: 0.2mm;
     font-size: 9px;
@@ -1127,15 +1141,13 @@ textarea {
   }
 
   .a5-two-copy-sheet .a5-dr-product-code {
-    flex: 0 0 auto;
+    flex: 0 0 20mm;
     white-space: nowrap;
     letter-spacing: 0.1px;
   }
 
   .a5-two-copy-sheet .a5-dr-quantity {
-    flex: 0 0 auto;
-    margin-left: auto;
-    min-width: 5mm;
+    flex: 0 0 8mm;
     font-size: 10.5px;
     font-weight: 700;
     text-align: right;
