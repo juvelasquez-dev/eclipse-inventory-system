@@ -24,6 +24,8 @@ interface POSOrderEditorProps {
   transaction: EditablePOSTransaction;
   onClose: () => void;
   onSaved: (committedTotal: number, reopened: boolean) => void;
+  inventory?: Array<{ id: string; stock: number }>;
+  inventorySyncStatus?: string;
 }
 
 interface ModificationResponse {
@@ -97,7 +99,13 @@ export default function POSOrderEditor({
   transaction,
   onClose,
   onSaved,
+  inventory = [],
+  inventorySyncStatus,
 }: POSOrderEditorProps) {
+  const stockByProductId = useMemo(
+    () => new Map(inventory.map((item) => [item.id, item.stock])),
+    [inventory]
+  );
   const [products, setProducts] = useState<Product[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -258,15 +266,35 @@ export default function POSOrderEditor({
     });
   }
 
+  function friendlyStockMessage(message: string) {
+    const describe = (id: string) => {
+      const known = products.find((p) => p.id === id) ?? snapshotProducts.get(id);
+      return { name: known?.name ?? `product ${id}`, unit: known?.unit ?? "unit" };
+    };
+    const insufficient = message.match(
+      /Insufficient stock for product (.+?)\. Available: (-?\d+), additional quantity required: (\d+)/
+    );
+    if (insufficient) {
+      const [, id, available, required] = insufficient;
+      const { name, unit } = describe(id);
+      return `Not enough stock for ${name}. Available: ${available} ${unit}; ${required} more ${unit} needed.`;
+    }
+    const notFound = message.match(/Product not found: (\S+)/);
+    if (notFound) {
+      return `${describe(notFound[1]).name} is no longer available in the product catalog.`;
+    }
+    return message;
+  }
+
   function getErrorMessage(error: unknown) {
-    if (error instanceof Error) return error.message;
+    if (error instanceof Error) return friendlyStockMessage(error.message);
     if (
       typeof error === "object" &&
       error !== null &&
       "message" in error &&
       typeof error.message === "string"
     ) {
-      return error.message;
+      return friendlyStockMessage(error.message);
     }
     return "Unable to save this POS correction.";
   }
@@ -519,6 +547,11 @@ export default function POSOrderEditor({
                 { label: loadingProducts ? "Loading products..." : "Select a product", value: "" },
                 ...products
                   .filter((product) => !(product.id in quantities))
+                  .filter((product) => {
+                    if (inventorySyncStatus !== "fresh") return true;
+                    const stock = stockByProductId.get(product.id);
+                    return stock === undefined || stock > 0;
+                  })
                   .map((product) => ({
                     label: `${product.name} (${product.code}) — ${formatPrice(product.price)}`,
                     value: product.id,

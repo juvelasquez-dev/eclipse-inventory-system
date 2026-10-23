@@ -332,6 +332,7 @@ export default function POSHistory() {
     refreshInventory,
     products,
     inventory,
+    inventorySyncStatus,
     isLoading: catalogLoading,
     loadError: catalogLoadError,
   } = useInventoryContext();
@@ -2094,6 +2095,8 @@ export default function POSHistory() {
         <POSOrderEditor
           key={`${editingTransaction.id}:${editingTransaction.revisionNumber}`}
           transaction={editingTransaction}
+          inventory={inventory}
+          inventorySyncStatus={inventorySyncStatus}
           onClose={() => setEditingTransaction(null)}
           onSaved={(committedTotal, reopened) =>
             void handleModificationSaved(committedTotal, reopened)
