@@ -27,7 +27,10 @@ const customerLineCharacters = 48;
  * long wrapped customer text or a cancelled receipt shrinks the checklist area.
  */
 export function getA5ReceiptHeaderExtraMm(
-  receipt: ReceiptData,
+  receipt: Pick<
+    ReceiptData,
+    "customerName" | "customerAddress" | "customerPhone" | "transactionStatus"
+  >,
   parties: { outletName: string; contactPerson: string } = {
     outletName: receipt.customerName,
     contactPerson: "",

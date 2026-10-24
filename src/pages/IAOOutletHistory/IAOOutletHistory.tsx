@@ -10,7 +10,10 @@ import Input from "../../components/ui/Input";
 import Modal from "../../components/ui/Modal";
 import Select from "../../components/ui/Select";
 import { useToast } from "../../context/ToastContext";
+import { useInventoryContext } from "../../context/InventoryContext";
 import { supabase } from "../../lib/supabase";
+import { printReceipt } from "../../utils/receiptPrinting";
+import { buildIAOA4Checklist } from "../../utils/iaoA4Receipt";
 
 type OrderType = "ALL" | "MANUAL" | "POS_COPY";
 
@@ -33,6 +36,7 @@ function formatPrice(value: number) {
 export default function IAOOutletHistory() {
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const { products, inventory, isLoading: catalogLoading, loadError: catalogLoadError } = useInventoryContext();
 
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<OrderType>("ALL");
@@ -121,9 +125,24 @@ export default function IAOOutletHistory() {
     }
   }
 
-  function printOrder(receipt: IAOOutletOrderReceipt) {
+  function printOrder(receipt: IAOOutletOrderReceipt, format: "thermal" | "iao-a4" = "thermal") {
+    if (format === "iao-a4") {
+      const { issue } = buildIAOA4Checklist(receipt, products, inventory, catalogLoading, catalogLoadError);
+      if (issue) {
+        showToast(issue, "error");
+        return;
+      }
+    }
     setReceiptToPrint(receipt);
-    window.setTimeout(() => window.print(), 50);
+    window.setTimeout(() => {
+      try {
+        if (format === "iao-a4") printReceipt(format);
+        else window.print();
+      } catch (error) {
+        console.error("Unable to print IAO receipt:", error);
+        showToast("Unable to open the print dialog.", "error");
+      }
+    }, 50);
   }
 
   return (
@@ -284,9 +303,14 @@ export default function IAOOutletHistory() {
                 <p className="text-sm text-slate-500">Grand total</p>
                 <p className="text-xl font-bold text-slate-900">{formatPrice(viewingOrder.grandTotal)}</p>
               </div>
-              <Button type="button" variant="secondary" onClick={() => printOrder(viewingOrder)}>
-                <Printer size={16} /> Reprint
-              </Button>
+              <div className="flex gap-2">
+                <Button type="button" variant="secondary" onClick={() => printOrder(viewingOrder)}>
+                  <Printer size={16} /> Reprint
+                </Button>
+                <Button type="button" variant="secondary" onClick={() => printOrder(viewingOrder, "iao-a4")}>
+                  <Printer size={16} /> Print A4
+                </Button>
+              </div>
             </div>
           </div>
         )}

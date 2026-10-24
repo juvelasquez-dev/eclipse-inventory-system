@@ -12,6 +12,8 @@ import Select from "../../components/ui/Select";
 import { useInventoryContext } from "../../context/InventoryContext";
 import { useToast } from "../../context/ToastContext";
 import { supabase } from "../../lib/supabase";
+import { printReceipt } from "../../utils/receiptPrinting";
+import { buildIAOA4Checklist } from "../../utils/iaoA4Receipt";
 import type { Outlet, Product } from "../../types/inventory";
 
 interface OrderItem {
@@ -49,7 +51,7 @@ function formatPrice(value: number) {
 
 export default function IAOOutletOrders() {
   const navigate = useNavigate();
-  const { products, outlets, inventory } = useInventoryContext();
+  const { products, outlets, inventory, isLoading, loadError } = useInventoryContext();
   const { showToast } = useToast();
   const [outletSearch, setOutletSearch] = useState("");
   const [selectedOutlet, setSelectedOutlet] = useState<Outlet | null>(null);
@@ -122,6 +124,16 @@ export default function IAOOutletOrders() {
     const sellingPrice = Number(item.sellingPrice);
     return total + (Number.isFinite(sellingPrice) ? sellingPrice * item.quantity : 0);
   }, 0);
+
+  function printLastReceiptA4() {
+    if (!receipt) return;
+    const { issue } = buildIAOA4Checklist(receipt, products, inventory, isLoading, loadError);
+    if (issue) {
+      showToast(issue, "error");
+      return;
+    }
+    printReceipt("iao-a4");
+  }
 
   function addProduct(productId: string) {
     const product = products.find((item) => item.id === productId);
@@ -448,7 +460,12 @@ export default function IAOOutletOrders() {
           </section>
         </div>
 
-        {receipt && <div className="flex justify-end"><Button type="button" variant="secondary" onClick={() => window.print()}><Printer size={16} /> Print last receipt</Button></div>}
+        {receipt && (
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={() => window.print()}><Printer size={16} /> Print last receipt</Button>
+            <Button type="button" variant="secondary" onClick={() => printLastReceiptA4()}><Printer size={16} /> Print last receipt (A4)</Button>
+          </div>
+        )}
       </div>
 
       <Modal

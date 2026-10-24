@@ -924,7 +924,9 @@ textarea {
 
 @media print {
   html[data-receipt-print-format="a4-two-copy"],
-  body[data-receipt-print-format="a4-two-copy"] {
+  html[data-receipt-print-format="iao-a4"],
+  body[data-receipt-print-format="a4-two-copy"],
+  body[data-receipt-print-format="iao-a4"] {
     width: 297mm !important;
     min-width: 297mm !important;
     height: 210mm !important;
@@ -948,7 +950,8 @@ textarea {
     display: none;
   }
 
-  body[data-receipt-print-format="a4-two-copy"] .a5-two-copy-sheet {
+  body[data-receipt-print-format="a4-two-copy"] .a5-two-copy-sheet,
+  body[data-receipt-print-format="iao-a4"] .iao-a4-sheet {
     display: grid !important;
     grid-template-columns: 148mm 1mm 148mm;
     align-items: stretch;
@@ -1203,5 +1206,25 @@ textarea {
   .a5-two-copy-sheet .a5-dr-footer {
     break-inside: avoid;
     page-break-inside: avoid;
+  }
+}
+
+/* IAO outlet-order receipt — A4 two-copy landscape (format "iao-a4").
+   Reuses the .a5-two-copy-sheet / .a5-delivery-receipt / .a5-dr-* rules above. */
+.iao-a4-sheet {
+  display: none;
+}
+
+@media print {
+  body[data-receipt-print-format="iao-a4"] {
+    overflow: hidden !important;
+  }
+
+  body[data-receipt-print-format="iao-a4"] > #root,
+  body[data-receipt-print-format="iao-a4"] .dr-receipt,
+  body[data-receipt-print-format="iao-a4"] .iao-receipt,
+  body[data-receipt-print-format="iao-a4"] .a5-two-copy-sheet:not(.iao-a4-sheet),
+  body[data-receipt-print-format="a4-two-copy"] .iao-a4-sheet {
+    display: none !important;
   }
 }
