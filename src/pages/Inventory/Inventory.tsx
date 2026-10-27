@@ -68,10 +68,7 @@ export default function Inventory() {
       .filter((product) => {
         switch (stockFilter) {
           case "AVAILABLE":
-            return (
-              product.stock >
-              product.minimumStock
-            );
+            return product.stock > 0;
 
           case "LOW":
             return (
@@ -272,7 +269,7 @@ export default function Inventory() {
                     value: "ALL",
                   },
                   {
-                    label: "In Stock",
+                    label: "Available Stock",
                     value: "AVAILABLE",
                   },
                   {
