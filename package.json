@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
+    "test": "node --test scripts/productDuplicate.test.mjs",
     "system-check": "node scripts/system-check.mjs"
   },
   "dependencies": {

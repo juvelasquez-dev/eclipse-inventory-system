@@ -7,7 +7,7 @@ import Select from "../ui/Select";
 import { categories } from "../../mock/categories";
 import { flavorsByCategory } from "../../mock/flavors";
 import {
-  findExistingProduct,
+  findDuplicateProduct,
   deriveProductCodeAndName,
 } from "../../utils/productCode";
 
@@ -51,32 +51,32 @@ interface ProductFormProps {
   products?: Product[];
 }
 
+function getInitialFlavor(initialValues?: Product): string {
+  if (!initialValues?.name) {
+    return "";
+  }
+
+  const suffix = ` ${initialValues.category}`;
+
+  if (initialValues.name.endsWith(suffix)) {
+    return initialValues.name.slice(0, -suffix.length);
+  }
+
+  return initialValues.name;
+}
+
 export default function ProductForm({
   initialValues,
   onSubmit,
   products = [],
 }: ProductFormProps) {
+  const initialFlavor = getInitialFlavor(initialValues);
+
   const [category, setCategory] = useState(
     initialValues?.category ?? ""
   );
 
-  const [flavor, setFlavor] = useState(() => {
-    if (!initialValues?.name) {
-      return "";
-    }
-
-    const categoryName = initialValues.category;
-    const suffix = ` ${categoryName}`;
-
-    if (initialValues.name.endsWith(suffix)) {
-      return initialValues.name.slice(
-        0,
-        -suffix.length
-      );
-    }
-
-    return initialValues.name;
-  });
+  const [flavor, setFlavor] = useState(initialFlavor);
 
   const [isNewFlavor, setIsNewFlavor] =
     useState(false);
@@ -114,33 +114,30 @@ export default function ProductForm({
     ])
   );
 
-  // Look for existing product matching category + flavor
-  const existingProduct = findExistingProduct(
-    category,
-    flavor,
-    products
-  );
-  const duplicateProduct =
-    initialValues && existingProduct?.id === initialValues.id
-      ? findExistingProduct(
-          category,
-          flavor,
-          products.filter(
-            (product) => product.id !== initialValues.id
-          )
-        )
-      : existingProduct;
+  // When editing, an untouched category/flavor keeps the product's own
+  // identity (code and name) and cannot collide with other products.
+  const identityUnchanged =
+    !!initialValues &&
+    category === initialValues.category &&
+    flavor === initialFlavor;
+
+  const duplicateProduct = identityUnchanged
+    ? undefined
+    : findDuplicateProduct(
+        category,
+        flavor,
+        products,
+        initialValues?.id
+      );
 
   // Determine product code and name
   let generatedCode = "";
   let productName = "";
 
-  if (existingProduct) {
-    // Use exact existing product code and name
-    generatedCode = existingProduct.code;
-    productName = existingProduct.name;
+  if (identityUnchanged && initialValues) {
+    generatedCode = initialValues.code;
+    productName = initialValues.name;
   } else if (category && flavor.trim()) {
-    // Derive format from existing products in this category
     const derived = deriveProductCodeAndName(
       category,
       flavor.trim(),

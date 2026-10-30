@@ -95,21 +95,80 @@ export function generateProductCode(
   return `${categoryCode}-${flavorCode}`;
 }
 
+function normalize(value: string): string {
+  return value.trim().toLowerCase();
+}
+
 /**
  * Find an existing product by category and flavor.
- * Matches by category and checks if flavor name appears in product name.
+ * The flavor must match exactly (case-insensitive); a flavor that is merely
+ * contained in another product's name (e.g. "Mango" vs "Mango Fiesta") is
+ * a different product.
  */
 export function findExistingProduct(
   category: string,
   flavor: string,
   products: Product[]
 ): Product | undefined {
-  return products.find(
+  const target = normalize(flavor);
+
+  if (!target) {
+    return undefined;
+  }
+
+  const prefixed = normalize(`${category} ${flavor}`);
+
+  return products.find((product) => {
+    if (product.category !== category) {
+      return false;
+    }
+
+    const name = normalize(product.name);
+    const categoryPrefix = `${normalize(category)} `;
+    const productFlavor = name.startsWith(categoryPrefix)
+      ? name.slice(categoryPrefix.length)
+      : name;
+
+    return productFlavor === target || name === prefixed;
+  });
+}
+
+/**
+ * Find a product that would collide with the given category + flavor.
+ * The product being edited (editingProductId) is never a duplicate of
+ * itself. Collisions are exact matches on flavor, generated name, or
+ * generated code (the database enforces unique codes case-insensitively).
+ */
+export function findDuplicateProduct(
+  category: string,
+  flavor: string,
+  products: Product[],
+  editingProductId?: string
+): Product | undefined {
+  const others = editingProductId
+    ? products.filter((product) => product.id !== editingProductId)
+    : products;
+
+  const byFlavor = findExistingProduct(category, flavor, others);
+
+  if (byFlavor) {
+    return byFlavor;
+  }
+
+  if (!category || !flavor.trim()) {
+    return undefined;
+  }
+
+  const derived = deriveProductCodeAndName(
+    category,
+    flavor.trim(),
+    others
+  );
+
+  return others.find(
     (product) =>
-      product.category === category &&
-      product.name
-        .toLowerCase()
-        .includes(flavor.toLowerCase())
+      normalize(product.code) === normalize(derived.code) ||
+      normalize(product.name) === normalize(derived.name)
   );
 }
 
