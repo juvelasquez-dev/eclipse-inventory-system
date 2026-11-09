@@ -188,11 +188,23 @@ export default function POS() {
   const inventoryIsFresh =
     inventorySyncStatus === "fresh" &&
     inventoryRealtimeStatus !== "connecting";
+
+  const hasEverBeenFresh = useRef(false);
+  useEffect(() => {
+    if (inventoryIsFresh) {
+      hasEverBeenFresh.current = true;
+    }
+  }, [inventoryIsFresh]);
+
   const inventoryDisplayStatus =
     inventorySyncStatus === "fresh" &&
     inventoryRealtimeStatus === "connecting"
       ? "stale"
       : inventorySyncStatus;
+
+  const isBackgroundRefresh =
+    hasEverBeenFresh.current &&
+    inventoryDisplayStatus === "refreshing";
   const { showToast } = useToast();
   const a5CatalogIssue = getA5ReceiptCatalogIssue(
     products,
@@ -450,48 +462,42 @@ export default function POS() {
           product.unit === unit;
 
         /*
-         * Only apply stock-status filtering
-         * when inventory is fresh and reliable.
-         *
-         * While inventory is loading or stale,
-         * skip stock filtering to avoid
-         * incorrectly treating missing entries as zero stock.
+         * Apply stock-status filtering always.
+         * Use last-known-good inventory data.
+         * Missing entries are excluded from stock-specific filters.
          */
-        const matchesStockStatus = !inventoryIsFresh
-          ? true
-          : (() => {
-              const inventoryEntry =
-                inventoryByProductId.get(
-                  product.id
-                );
+        const matchesStockStatus = (() => {
+          const inventoryEntry =
+            inventoryByProductId.get(
+              product.id
+            );
 
-              /*
-               * If no inventory entry while fresh,
-               * do not filter by stock status.
-               * Keep product visible rather than
-               * incorrectly classifying as out of stock.
-               */
-              if (!inventoryEntry) {
-                return true;
-              }
+          /*
+           * If no inventory entry exists,
+           * exclude from stock-specific filters (LOW, OUT, AVAILABLE).
+           * Keep visible only in ALL filter.
+           */
+          if (!inventoryEntry) {
+            return stockStatus === "ALL";
+          }
 
-              const currentStock =
-                inventoryEntry.stock;
+          const currentStock =
+            inventoryEntry.stock;
 
-              const minimumStock =
-                product.minimumStock;
+          const minimumStock =
+            product.minimumStock;
 
-              return (
-                stockStatus === "ALL" ||
-                (stockStatus === "AVAILABLE" &&
-                  currentStock > 0) ||
-                (stockStatus === "LOW" &&
-                  currentStock > 0 &&
-                  currentStock <= minimumStock) ||
-                (stockStatus === "OUT" &&
-                  currentStock === 0)
-              );
-            })();
+          return (
+            stockStatus === "ALL" ||
+            (stockStatus === "AVAILABLE" &&
+              currentStock > 0) ||
+            (stockStatus === "LOW" &&
+              currentStock > 0 &&
+              currentStock <= minimumStock) ||
+            (stockStatus === "OUT" &&
+              currentStock === 0)
+          );
+        })();
 
         return (
           matchesSearch &&
@@ -1370,7 +1376,8 @@ export default function POS() {
 
           </div>
 
-          {(!inventoryIsFresh ||
+          {((!inventoryIsFresh &&
+            !isBackgroundRefresh) ||
             inventoryRealtimeStatus === "unavailable") && (
             <section
               role={inventoryDisplayStatus === "refreshing" || inventoryDisplayStatus === "loading" ? "status" : "alert"}
@@ -1386,13 +1393,12 @@ export default function POS() {
                 {inventoryDisplayStatus === "refreshing" && "Refreshing current inventory"}
                 {inventoryDisplayStatus === "stale" && "Inventory may be out of date"}
                 {inventoryDisplayStatus === "error" && "Unable to verify current inventory"}
-                {inventoryIsFresh &&
-                  inventoryRealtimeStatus === "unavailable" &&
+                {inventoryRealtimeStatus === "unavailable" &&
                   "Live inventory updates unavailable"}
               </p>
               <p className="mt-1 text-sm">
                 {inventorySyncError ??
-                  (inventoryIsFresh && inventoryRealtimeStatus === "unavailable"
+                  (inventoryRealtimeStatus === "unavailable"
                     ? "The app is reconciling stock with the database every 30 seconds while this tab is visible and online."
                     : inventoryDisplayStatus === "refreshing" || inventoryDisplayStatus === "loading"
                     ? "Product additions and new checkouts are paused until stock refresh completes."
@@ -1713,18 +1719,38 @@ export default function POS() {
 
                   {filteredProducts.map(
                     (product) => {
-                      const currentStock =
+                      const inventoryEntry =
                         inventoryByProductId.get(
                           product.id
-                        )?.stock ?? 0;
+                        );
+
+                      const currentStock =
+                        inventoryEntry?.stock ?? 0;
+
+                      const hasInventoryEntry =
+                        inventoryByProductId.has(
+                          product.id
+                        );
 
                       const stockClass =
-                        currentStock <= 0
-                          ? "text-red-600"
-                          : currentStock <=
-                              product.minimumStock
-                            ? "text-amber-600"
-                            : "text-emerald-600";
+                        !hasInventoryEntry
+                          ? "text-slate-400"
+                          : currentStock <= 0
+                            ? "text-red-600"
+                            : currentStock <=
+                                product.minimumStock
+                              ? "text-amber-600"
+                              : "text-emerald-600";
+
+                      const stockLabel =
+                        !hasInventoryEntry
+                          ? "Stock unavailable"
+                          : currentStock <= 0
+                            ? "Out of Stock"
+                            : currentStock <=
+                                product.minimumStock
+                              ? `${currentStock} ${product.unit} available · Low Stock`
+                              : `${currentStock} ${product.unit} available`;
 
                       return (
                       <button
@@ -1790,12 +1816,7 @@ export default function POS() {
                         <p
                           className={`mt-2 text-xs font-semibold ${stockClass}`}
                         >
-                          {currentStock <= 0
-                            ? "Out of Stock"
-                            : currentStock <=
-                                product.minimumStock
-                              ? `${currentStock} ${product.unit} available · Low Stock`
-                              : `${currentStock} ${product.unit} available`}
+                          {stockLabel}
                         </p>
 
                       </button>
