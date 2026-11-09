@@ -211,7 +211,7 @@ export default function POS() {
   const [category, setCategory] = useState("");
   const [unit, setUnit] = useState("");
   const [stockStatus, setStockStatus] =
-    useState("ALL");
+    useState("AVAILABLE");
 
   /*
    * =========================================================
@@ -449,23 +449,49 @@ export default function POS() {
           !unit ||
           product.unit === unit;
 
-        const currentStock =
-          inventoryByProductId.get(
-            product.id
-          )?.stock ?? 0;
+        /*
+         * Only apply stock-status filtering
+         * when inventory is fresh and reliable.
+         *
+         * While inventory is loading or stale,
+         * skip stock filtering to avoid
+         * incorrectly treating missing entries as zero stock.
+         */
+        const matchesStockStatus = !inventoryIsFresh
+          ? true
+          : (() => {
+              const inventoryEntry =
+                inventoryByProductId.get(
+                  product.id
+                );
 
-        const minimumStock =
-          product.minimumStock;
+              /*
+               * If no inventory entry while fresh,
+               * do not filter by stock status.
+               * Keep product visible rather than
+               * incorrectly classifying as out of stock.
+               */
+              if (!inventoryEntry) {
+                return true;
+              }
 
-        const matchesStockStatus =
-          stockStatus === "ALL" ||
-          (stockStatus === "IN_STOCK" &&
-            currentStock > minimumStock) ||
-          (stockStatus === "LOW_STOCK" &&
-            currentStock > 0 &&
-            currentStock <= minimumStock) ||
-          (stockStatus === "OUT_OF_STOCK" &&
-            currentStock <= 0);
+              const currentStock =
+                inventoryEntry.stock;
+
+              const minimumStock =
+                product.minimumStock;
+
+              return (
+                stockStatus === "ALL" ||
+                (stockStatus === "AVAILABLE" &&
+                  currentStock > 0) ||
+                (stockStatus === "LOW" &&
+                  currentStock > 0 &&
+                  currentStock <= minimumStock) ||
+                (stockStatus === "OUT" &&
+                  currentStock === 0)
+              );
+            })();
 
         return (
           matchesSearch &&
@@ -516,6 +542,7 @@ export default function POS() {
     unit,
     stockStatus,
     inventoryByProductId,
+    inventoryIsFresh,
   ]);
 
   /*
@@ -566,13 +593,13 @@ export default function POS() {
     search.trim() !== "" ||
     category !== "" ||
     unit !== "" ||
-    stockStatus !== "ALL";
+    stockStatus !== "AVAILABLE";
 
   function clearFilters() {
     setSearch("");
     setCategory("");
     setUnit("");
-    setStockStatus("ALL");
+    setStockStatus("AVAILABLE");
   }
 
   /*
@@ -1640,20 +1667,20 @@ export default function POS() {
                   }
                   options={[
                     {
-                      label: "All Stock",
+                      label: "All",
                       value: "ALL",
                     },
                     {
-                      label: "In Stock",
-                      value: "IN_STOCK",
+                      label: "Available Stock",
+                      value: "AVAILABLE",
                     },
                     {
                       label: "Low Stock",
-                      value: "LOW_STOCK",
+                      value: "LOW",
                     },
                     {
                       label: "Out of Stock",
-                      value: "OUT_OF_STOCK",
+                      value: "OUT",
                     },
                   ]}
                 />
