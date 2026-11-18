@@ -6,6 +6,7 @@ import {
   BUSINESS_TIMEZONE,
   businessDayStart,
 } from "./businessDate";
+import { resolveReceiptParties } from "./receiptParties";
 
 const TRANSACTION_PAGE_SIZE = 500;
 const ITEM_TRANSACTION_BATCH_SIZE = 50;
@@ -18,6 +19,7 @@ export const RECEIPT_HEADERS = [
   "ReceiptId",
   "Cashier",
   "CustomerName",
+  "ContactPerson",
   "CustomerNumber",
   "CustomerEmail",
   "NumberOfItems",
@@ -37,6 +39,7 @@ export const RECEIPT_WITH_ITEMS_HEADERS = [
   "Date",
   "Cashier",
   "CustomerName",
+  "ContactPerson",
   "CustomerNumber",
   "CustomerEmail",
   "EntryType",
@@ -61,6 +64,7 @@ interface ReportTransactionRow {
   receipt_number: number | null;
   created_by: string | null;
   customer_name: string | null;
+  customer_address: string | null;
   customer_phone: string | null;
   subtotal: number | string;
   payment_method: string | null;
@@ -81,6 +85,7 @@ export interface ReportReceipt {
   receiptId: string;
   cashier: string;
   customerName: string;
+  contactPerson: string;
   customerNumber: string;
   numberOfItems: number;
   total: number;
@@ -180,7 +185,7 @@ async function fetchTransactions(
     const { data, error } = await supabase
       .from("pos_transactions")
       .select(
-        "id, delivery_receipt_sequence, area_code, receipt_number, created_by, customer_name, customer_phone, subtotal, payment_method, created_at"
+        "id, delivery_receipt_sequence, area_code, receipt_number, created_by, customer_name, customer_address, customer_phone, subtotal, payment_method, created_at"
       )
       .eq("transaction_status", "COMPLETED")
       .gte("created_at", rangeStart)
@@ -199,6 +204,26 @@ async function fetchTransactions(
   }
 
   return rows;
+}
+
+async function fetchOutletContactDetails(customerNames: string[]) {
+  const names = Array.from(new Set(customerNames.filter(Boolean)));
+  if (names.length === 0) return [];
+
+  const { data, error } = await supabase
+    .from("outlets")
+    .select("outlet_name, contact_person, complete_address")
+    .in("outlet_name", names);
+
+  if (error) {
+    throw new Error(error.message || "Unable to load outlet contact details.");
+  }
+
+  return (data ?? []).map((outlet) => ({
+    outletName: outlet.outlet_name ?? "",
+    contactPerson: outlet.contact_person ?? "",
+    completeAddress: outlet.complete_address ?? "",
+  }));
 }
 
 export async function fetchItems(
@@ -278,7 +303,12 @@ export async function loadPOSTransactionReport(
   const transactions = await fetchTransactions(startKey, endKey);
   if (transactions.length === 0) return [];
 
-  const itemRows = await fetchItems(transactions.map((row) => row.id));
+  const [itemRows, outlets] = await Promise.all([
+    fetchItems(transactions.map((row) => row.id)),
+    fetchOutletContactDetails(
+      transactions.map((row) => row.customer_name ?? "")
+    ),
+  ]);
   const itemsByTransaction = new Map<string, ReportItemRow[]>();
   for (const item of itemRows) {
     const list = itemsByTransaction.get(item.transaction_id) ?? [];
@@ -314,6 +344,13 @@ export async function loadPOSTransactionReport(
         (row.created_by && cashierNames.get(row.created_by)) ||
         "Unknown cashier",
       customerName: row.customer_name ?? "",
+      contactPerson: resolveReceiptParties(
+        {
+          customerName: row.customer_name ?? "",
+          customerAddress: row.customer_address ?? "",
+        },
+        outlets
+      ).contactPerson,
       customerNumber: (row.customer_phone ?? "").trim(),
       numberOfItems: items.length,
       total: toFiniteNumber(row.subtotal, "total"),
@@ -344,6 +381,7 @@ export function buildReceiptsRows(receipts: ReportReceipt[]): CellValue[][] {
     receipt.receiptId,
     receipt.cashier,
     receipt.customerName,
+    receipt.contactPerson,
     receipt.customerNumber,
     "",
     receipt.numberOfItems,
@@ -362,6 +400,7 @@ export function buildReceiptsWithItemsRows(
       receipt.date,
       receipt.cashier,
       receipt.customerName,
+      receipt.contactPerson,
       receipt.customerNumber,
       "",
       null,
@@ -374,6 +413,7 @@ export function buildReceiptsWithItemsRows(
     for (const item of receipt.items) {
       rows.push([
         receipt.receiptId,
+        null,
         null,
         null,
         null,
@@ -439,9 +479,9 @@ export function buildPOSTransactionWorkbook(
     createSheet(
       RECEIPT_HEADERS,
       buildReceiptsRows(receipts),
-      [22, 14, 26, 32, 16, 26, 14, 14, 14, 10, 15, 14, 14, 14, 12, 12],
-      [4],
-      [7, 8, 9, 10, 11, 12, 13, 14]
+      [22, 14, 26, 32, 28, 16, 26, 14, 14, 14, 10, 15, 14, 14, 14, 12, 12],
+      [5],
+      [8, 9, 10, 11, 12, 13, 14, 15]
     ),
     "receipts"
   );
@@ -450,9 +490,9 @@ export function buildPOSTransactionWorkbook(
     createSheet(
       RECEIPT_WITH_ITEMS_HEADERS,
       buildReceiptsWithItemsRows(receipts),
-      [14, 22, 26, 32, 16, 26, 11, 36, 14, 14, 14, 14, 10, 15, 14, 14, 14, 12, 12],
-      [4],
-      [8, 10, 11, 12, 13, 14, 15, 16, 17]
+      [14, 22, 26, 32, 28, 16, 26, 11, 36, 14, 14, 14, 14, 10, 15, 14, 14, 14, 12, 12],
+      [5],
+      [9, 11, 12, 13, 14, 15, 16, 17, 18]
     ),
     "receiptsWithItems"
   );

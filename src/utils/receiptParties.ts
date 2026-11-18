@@ -16,7 +16,7 @@ function normalize(value: string | null | undefined) {
  */
 export function resolveReceiptParties(
   receipt: { customerName: string; customerAddress: string },
-  outlets: Outlet[]
+  outlets: Pick<Outlet, "outletName" | "contactPerson" | "completeAddress">[]
 ): ReceiptParties {
   const outletName = receipt.customerName.trim();
   const sameName = outlets.filter(
