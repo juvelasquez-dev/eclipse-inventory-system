@@ -243,6 +243,7 @@ function mapOutlet(row: any): Outlet {
     contactNumber: row.contact_number,
     completeAddress: row.complete_address,
     areaCode: row.area_code,
+    eftSubareaCode: row.eft_subarea_code ?? null,
     tin: row.tin ?? "",
     idType: row.id_type ?? "",
     idNumber: row.id_number ?? "",
@@ -1177,6 +1178,8 @@ export function InventoryProvider({
             outlet.completeAddress,
           area_code:
             outlet.areaCode,
+          eft_subarea_code:
+            outlet.areaCode === "EFT" ? outlet.eftSubareaCode ?? null : null,
           tin:
             outlet.tin?.trim() || null,
           id_type:
@@ -1284,6 +1287,10 @@ export function InventoryProvider({
             updatedOutlet.completeAddress,
           area_code:
             updatedOutlet.areaCode,
+          eft_subarea_code:
+            updatedOutlet.areaCode === "EFT"
+              ? updatedOutlet.eftSubareaCode ?? null
+              : null,
           tin:
             updatedOutlet.tin?.trim() ||
             null,

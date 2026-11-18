@@ -27,6 +27,8 @@ export interface Transaction {
 
 export type OutletStatus = "Active" | "Inactive";
 
+export type EftSubareaCode = "EAST" | "WEST" | "LANAO" | "BUKIDNON" | "CGY";
+
 export const OUTLET_ID_TYPE_OPTIONS = [
   "Select ID Type",
   "Driver's License",
@@ -63,6 +65,7 @@ export interface Outlet {
   contactNumber: string;
   completeAddress: string;
   areaCode: string;
+  eftSubareaCode?: EftSubareaCode | null;
   tin?: string;
   idType?: string;
   idNumber?: string;

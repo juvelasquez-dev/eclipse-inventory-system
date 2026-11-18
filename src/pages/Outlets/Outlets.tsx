@@ -82,6 +82,9 @@ export default function Outlets() {
   const [isDeleteModalOpen, setIsDeleteModalOpen] =
     useState(false);
 
+  const [deleteError, setDeleteError] =
+    useState("");
+
   const [selectedOutlet, setSelectedOutlet] =
     useState<Outlet | undefined>();
 
@@ -228,6 +231,7 @@ export default function Outlets() {
   }
 
   function handleDelete(outlet: Outlet) {
+    setDeleteError("");
     setSelectedOutlet(outlet);
     setIsDeleteModalOpen(true);
   }
@@ -282,12 +286,29 @@ export default function Outlets() {
       return;
     }
 
-    await deleteOutlet(
-      selectedOutlet.id
-    );
+    let deleted: boolean;
+    try {
+      deleted = await deleteOutlet(
+        selectedOutlet.id
+      );
+    } catch (error) {
+      console.error("Unexpected error deleting outlet:", error);
+      setDeleteError(
+        "Unable to delete this outlet due to an unexpected error. Please try again."
+      );
+      return;
+    }
+
+    if (!deleted) {
+      setDeleteError(
+        "Unable to delete this outlet. If it is associated with existing transactions, it cannot be deleted; mark it Inactive instead."
+      );
+      return;
+    }
 
     setIsDeleteModalOpen(false);
     setSelectedOutlet(undefined);
+    setDeleteError("");
   }
 
   function handleCloseModal() {
@@ -1098,10 +1119,14 @@ export default function Outlets() {
         onCancel={() => {
           setIsDeleteModalOpen(false);
           setSelectedOutlet(undefined);
+          setDeleteError("");
         }}
         onConfirm={confirmDelete}
         title="Delete Outlet"
-        message={`Are you sure you want to delete "${selectedOutlet?.outletName}"? This action cannot be undone.`}
+        message={
+          deleteError ||
+          `Are you sure you want to delete "${selectedOutlet?.outletName}"? This action cannot be undone.`
+        }
       />
 
     </div>

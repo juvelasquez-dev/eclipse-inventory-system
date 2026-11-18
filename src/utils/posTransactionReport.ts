@@ -20,6 +20,7 @@ export const RECEIPT_HEADERS = [
   "Cashier",
   "CustomerName",
   "ContactPerson",
+  "Subarea",
   "CustomerNumber",
   "CustomerEmail",
   "NumberOfItems",
@@ -40,6 +41,7 @@ export const RECEIPT_WITH_ITEMS_HEADERS = [
   "Cashier",
   "CustomerName",
   "ContactPerson",
+  "Subarea",
   "CustomerNumber",
   "CustomerEmail",
   "EntryType",
@@ -66,6 +68,7 @@ interface ReportTransactionRow {
   customer_name: string | null;
   customer_address: string | null;
   customer_phone: string | null;
+  eft_subarea_snapshot: string | null;
   subtotal: number | string;
   payment_method: string | null;
   created_at: string;
@@ -86,6 +89,7 @@ export interface ReportReceipt {
   cashier: string;
   customerName: string;
   contactPerson: string;
+  eftSubareaSnapshot: string | null;
   customerNumber: string;
   numberOfItems: number;
   total: number;
@@ -185,7 +189,7 @@ async function fetchTransactions(
     const { data, error } = await supabase
       .from("pos_transactions")
       .select(
-        "id, delivery_receipt_sequence, area_code, receipt_number, created_by, customer_name, customer_address, customer_phone, subtotal, payment_method, created_at"
+        "id, delivery_receipt_sequence, area_code, receipt_number, created_by, customer_name, customer_address, customer_phone, eft_subarea_snapshot, subtotal, payment_method, created_at"
       )
       .eq("transaction_status", "COMPLETED")
       .gte("created_at", rangeStart)
@@ -351,6 +355,7 @@ export async function loadPOSTransactionReport(
         },
         outlets
       ).contactPerson,
+      eftSubareaSnapshot: row.eft_subarea_snapshot ?? null,
       customerNumber: (row.customer_phone ?? "").trim(),
       numberOfItems: items.length,
       total: toFiniteNumber(row.subtotal, "total"),
@@ -382,6 +387,7 @@ export function buildReceiptsRows(receipts: ReportReceipt[]): CellValue[][] {
     receipt.cashier,
     receipt.customerName,
     receipt.contactPerson,
+    receipt.eftSubareaSnapshot ?? "",
     receipt.customerNumber,
     "",
     receipt.numberOfItems,
@@ -401,6 +407,7 @@ export function buildReceiptsWithItemsRows(
       receipt.cashier,
       receipt.customerName,
       receipt.contactPerson,
+      receipt.eftSubareaSnapshot ?? "",
       receipt.customerNumber,
       "",
       null,
@@ -413,6 +420,7 @@ export function buildReceiptsWithItemsRows(
     for (const item of receipt.items) {
       rows.push([
         receipt.receiptId,
+        null,
         null,
         null,
         null,
@@ -479,9 +487,9 @@ export function buildPOSTransactionWorkbook(
     createSheet(
       RECEIPT_HEADERS,
       buildReceiptsRows(receipts),
-      [22, 14, 26, 32, 28, 16, 26, 14, 14, 14, 10, 15, 14, 14, 14, 12, 12],
-      [5],
-      [8, 9, 10, 11, 12, 13, 14, 15]
+      [22, 14, 26, 32, 28, 14, 16, 26, 14, 14, 14, 10, 15, 14, 14, 14, 12, 12],
+      [5, 6],
+      [9, 10, 11, 12, 13, 14, 15, 16]
     ),
     "receipts"
   );
@@ -490,9 +498,9 @@ export function buildPOSTransactionWorkbook(
     createSheet(
       RECEIPT_WITH_ITEMS_HEADERS,
       buildReceiptsWithItemsRows(receipts),
-      [14, 22, 26, 32, 28, 16, 26, 11, 36, 14, 14, 14, 14, 10, 15, 14, 14, 14, 12, 12],
-      [5],
-      [9, 11, 12, 13, 14, 15, 16, 17, 18]
+      [14, 22, 26, 32, 28, 14, 16, 26, 11, 36, 14, 14, 14, 14, 10, 15, 14, 14, 14, 12, 12],
+      [5, 6],
+      [10, 12, 13, 14, 15, 16, 17, 18, 19]
     ),
     "receiptsWithItems"
   );

@@ -6,6 +6,7 @@ import Select from "../ui/Select";
 
 import {
   OUTLET_ID_TYPE_OPTIONS,
+  type EftSubareaCode,
   type Outlet,
   type OutletStatus,
 } from "../../types/inventory";
@@ -20,6 +21,7 @@ export interface OutletFormData {
   contactNumber: string;
   completeAddress: string;
   areaCode: string;
+  eftSubareaCode: EftSubareaCode | null;
   tin?: string;
   idType?: string;
   idNumber?: string;
@@ -33,6 +35,15 @@ interface OutletFormProps {
   onClearError?: () => void;
   onSubmit: (data: OutletFormData) => void;
 }
+
+const EFT_SUBAREA_OPTIONS: { label: string; value: EftSubareaCode | "" }[] = [
+  { label: "Select Subarea", value: "" },
+  { label: "East", value: "EAST" },
+  { label: "West", value: "WEST" },
+  { label: "Lanao", value: "LANAO" },
+  { label: "Bukidnon", value: "BUKIDNON" },
+  { label: "CGY", value: "CGY" },
+];
 
 export default function OutletForm({
   initialValues,
@@ -67,6 +78,10 @@ export default function OutletForm({
 
   const [areaCode, setAreaCode] = useState(
     initialValues?.areaCode ?? ""
+  );
+
+  const [eftSubareaCode, setEftSubareaCode] = useState<EftSubareaCode | "">(
+    initialValues?.eftSubareaCode ?? ""
   );
 
   const [tin, setTin] = useState(
@@ -141,6 +156,7 @@ export default function OutletForm({
       completeAddress:
         completeAddress.trim(),
       areaCode,
+      eftSubareaCode: areaCode === "EFT" ? eftSubareaCode || null : null,
       tin: tin.trim(),
       idType: idType.trim(),
       idNumber: idNumber.trim(),
@@ -231,21 +247,39 @@ export default function OutletForm({
               />
             </div>
 
-            <Select
-              label="Area"
-              value={areaCode}
-              onChange={(e) => {
-                setAreaCode(e.target.value);
-                setError("");
-                onClearError?.();
-              }}
-              options={[
-                { label: "Select Area", value: "" },
-                { label: "IAO", value: "IAO" },
-                { label: "CBR", value: "CBR" },
-                { label: "EFT", value: "EFT" },
-              ]}
-            />
+            <div className="space-y-4">
+              <Select
+                label="Area"
+                value={areaCode}
+                onChange={(e) => {
+                  setAreaCode(e.target.value);
+                  if (e.target.value !== "EFT") setEftSubareaCode("");
+                  setError("");
+                  onClearError?.();
+                }}
+                options={[
+                  { label: "Select Area", value: "" },
+                  { label: "IAO", value: "IAO" },
+                  { label: "CBR", value: "CBR" },
+                  { label: "EFT", value: "EFT" },
+                ]}
+              />
+              {areaCode === "EFT" && (
+                <Select
+                  label="EFT Subarea"
+                  value={eftSubareaCode}
+                  onChange={(e) => {
+                    const option = EFT_SUBAREA_OPTIONS.find(
+                      (item) => item.value === e.target.value
+                    );
+                    if (option) setEftSubareaCode(option.value);
+                    setError("");
+                    onClearError?.();
+                  }}
+                  options={EFT_SUBAREA_OPTIONS}
+                />
+              )}
+            </div>
 
           </div>
         </div>

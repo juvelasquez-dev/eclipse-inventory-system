@@ -20,10 +20,14 @@ import {
 } from "../../utils/businessDate";
 import {
   aggregateSales,
+  aggregateEftSubareas,
   downloadSalesSummary,
+  EFT_SUBAREAS,
+  eftTotalLabel,
   filterPeriodsWithTransactions,
   loadSalesTransactions,
   SALES_AREAS,
+  subareaLabel,
   validateSalesFilters,
   type SalesInterval,
   type SalesSummaryFilters,
@@ -38,6 +42,7 @@ function getDefaultFilters(): SalesSummaryFilters {
     area: "ALL",
     outletName: "ALL",
     interval: "DAILY",
+    subarea: "ALL",
   };
 }
 
@@ -132,6 +137,17 @@ export default function SalesSummaryReport() {
       showOnlyActive ? filterPeriodsWithTransactions(allPeriods) : allPeriods,
     [allPeriods, showOnlyActive]
   );
+  const subareas = useMemo(
+    () => aggregateEftSubareas(transactions, applied.subarea),
+    [transactions, applied.subarea]
+  );
+  const eftTotal = subareas.reduce(
+    (total, subarea) => ({
+      count: total.count + subarea.count,
+      totalCents: total.totalCents + subarea.totalCents,
+    }),
+    { count: 0, totalCents: 0 }
+  );
 
   const totalPages = Math.max(1, Math.ceil(periods.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
@@ -164,7 +180,7 @@ export default function SalesSummaryReport() {
 
   function handleExport() {
     try {
-      downloadSalesSummary(applied, summary, periods);
+      downloadSalesSummary(applied, summary, periods, subareas);
     } catch (exportError) {
       console.error("Unable to export sales summary:", exportError);
       showToast("Unable to export the sales summary.", "error");
@@ -192,7 +208,8 @@ export default function SalesSummaryReport() {
           <p className="mt-1 text-sm text-slate-500">
             Active range: {applied.startDate} to {applied.endDate} (Asia/Manila)
             · {applied.area === "ALL" ? "All areas" : applied.area} ·{" "}
-            {applied.outletName === "ALL" ? "All outlets" : applied.outletName}.
+            {applied.outletName === "ALL" ? "All outlets" : applied.outletName}
+            {applied.area === "EFT" ? ` · ${subareaLabel(applied.subarea)}` : ""}.
             Completed sales only.
           </p>
         </div>
@@ -206,7 +223,7 @@ export default function SalesSummaryReport() {
         </Button>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-6">
         <Input
           id="sales-start-date"
           label="Start date"
@@ -230,11 +247,32 @@ export default function SalesSummaryReport() {
               ...current,
               area: event.target.value,
               outletName: "ALL",
+              subarea: "ALL",
             }))
           }
           options={[
             { label: "All areas", value: "ALL" },
             ...SALES_AREAS.map((area) => ({ label: area, value: area })),
+          ]}
+        />
+        <Select
+          id="sales-subarea"
+          label="EFT Subarea"
+          value={draft.subarea}
+          disabled={draft.area !== "EFT"}
+          onChange={(event) => {
+            const value = event.target.value;
+            if (value === "ALL" || value === "UNASSIGNED") {
+              update("subarea", value);
+            } else {
+              const subarea = EFT_SUBAREAS.find((code) => code === value);
+              if (subarea) update("subarea", subarea);
+            }
+          }}
+          options={[
+            { label: "All Subareas", value: "ALL" },
+            ...EFT_SUBAREAS.map((subarea) => ({ label: subarea, value: subarea })),
+            { label: "Unassigned", value: "UNASSIGNED" },
           ]}
         />
         <Select
@@ -306,6 +344,40 @@ export default function SalesSummaryReport() {
           </div>
         ))}
       </div>
+
+      {!isLoading && !error && (applied.area === "EFT" || applied.area === "ALL") && (
+        <div>
+          <h3 className="text-sm font-semibold text-slate-900">EFT Subarea Breakdown</h3>
+          <p className="mt-1 text-sm text-slate-500">
+            EFT transactions only; Unassigned includes sales without a saved subarea.
+          </p>
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="border-b border-slate-200 text-xs uppercase text-slate-500">
+                <tr>
+                  <th className="py-2 pr-4">Subarea</th>
+                  <th className="py-2 pr-4 text-right">Transactions</th>
+                  <th className="py-2 text-right">Total Sales</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {subareas.map((subarea) => (
+                  <tr key={subarea.subarea}>
+                    <td className="py-2 pr-4">{subareaLabel(subarea.subarea)}</td>
+                    <td className="py-2 pr-4 text-right">{subarea.count}</td>
+                    <td className="py-2 text-right">{formatCents(subarea.totalCents)}</td>
+                  </tr>
+                ))}
+                <tr className="font-semibold">
+                  <td className="py-2 pr-4">{eftTotalLabel(applied.subarea)}</td>
+                  <td className="py-2 pr-4 text-right">{eftTotal.count}</td>
+                  <td className="py-2 text-right">{formatCents(eftTotal.totalCents)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {!isLoading && !error && transactions.length > 0 && periods.length === 0 && (
         <p className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">

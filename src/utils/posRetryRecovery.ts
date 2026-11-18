@@ -10,7 +10,7 @@ export interface CheckoutItemPayload {
   quantity: number;
 }
 
-export interface CheckoutPayload {
+interface CheckoutPayloadFields {
   customer_name: string;
   customer_address: string;
   customer_phone: string;
@@ -19,6 +19,15 @@ export interface CheckoutPayload {
   area_code: "IAO" | "CBR" | "EFT";
   items: CheckoutItemPayload[];
 }
+
+export type CheckoutPayloadV1 = CheckoutPayloadFields;
+
+export interface CheckoutPayloadV2 extends CheckoutPayloadFields {
+  payload_version: 2;
+  outlet_id: string | null;
+}
+
+export type CheckoutPayload = CheckoutPayloadV1 | CheckoutPayloadV2;
 
 export interface CheckoutRetryAttempt {
   version: number;
@@ -56,7 +65,7 @@ export function canonicalizeCheckoutPayload(payload: CheckoutPayload) {
   for (const { product_id, quantity } of payload.items) {
     items.set(product_id, (items.get(product_id) ?? 0) + quantity);
   }
-  return JSON.stringify({
+  const canonicalPayload = {
     customer_name: payload.customer_name,
     customer_address: payload.customer_address,
     customer_phone: payload.customer_phone,
@@ -68,7 +77,17 @@ export function canonicalizeCheckoutPayload(payload: CheckoutPayload) {
       quantity,
     }))
       .sort((left, right) => left.product_id.localeCompare(right.product_id)),
-  });
+  };
+
+  if ("payload_version" in payload) {
+    return JSON.stringify({
+      ...canonicalPayload,
+      payload_version: payload.payload_version,
+      outlet_id: payload.outlet_id,
+    });
+  }
+
+  return JSON.stringify(canonicalPayload);
 }
 
 export function parseCheckoutPayload(
@@ -178,6 +197,20 @@ function getCreatedAt(attempt: unknown) {
 
 function isCheckoutPayload(value: unknown): value is CheckoutPayload {
   if (!isRecord(value)) return false;
+  if (value.payload_version === 2) {
+    if (
+      !("outlet_id" in value) ||
+      (value.outlet_id !== null && !isUuid(value.outlet_id))
+    ) {
+      return false;
+    }
+  } else if (
+    value.payload_version !== undefined ||
+    "outlet_id" in value
+  ) {
+    return false;
+  }
+
   if (
     typeof value.customer_name !== "string" ||
     value.customer_name.trim() !== value.customer_name ||

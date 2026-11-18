@@ -27,6 +27,7 @@ import {
   POS_RETRY_ATTEMPT_TTL_MS,
   readCheckoutAttempt,
   type CheckoutPayload,
+  type CheckoutPayloadV2,
   type CheckoutRetryAttempt,
   type StoredAttemptResult,
   writeSessionAttempt,
@@ -931,7 +932,7 @@ export default function POS() {
     await submitCheckoutAttempt(attempt, payload, false);
   }
 
-  function getCurrentCheckoutPayload(): CheckoutPayload | null {
+  function getCurrentCheckoutPayload(): CheckoutPayloadV2 | null {
     if (!inventoryIsFresh) {
       showToast("Refresh inventory before starting a checkout.", "error");
       return null;
@@ -1004,7 +1005,8 @@ export default function POS() {
       showToast("Select a valid payment method.", "error");
       return null;
     }
-    const checkoutPayload: CheckoutPayload = {
+    const checkoutPayload: CheckoutPayloadV2 = {
+      payload_version: 2,
       customer_name: customerName.trim(),
       customer_address: customerAddress.trim(),
       customer_phone: customerPhone.trim(),
@@ -1013,6 +1015,7 @@ export default function POS() {
       payment_method: normalizedPaymentMethod,
       area_code: areaCode,
       items,
+      outlet_id: selectedOutlet?.id ?? null,
     };
     if (
       !Number.isFinite(checkoutPayload.amount_received) ||
@@ -1082,20 +1085,26 @@ export default function POS() {
     setIsSubmitting(true);
 
     try {
+      const checkoutParameters = {
+        p_customer_name: payload.customer_name,
+        p_customer_address: payload.customer_address,
+        p_customer_phone: payload.customer_phone,
+        p_amount_received: payload.amount_received,
+        p_payment_method: payload.payment_method,
+        p_items: payload.items,
+        p_area_code: payload.area_code,
+        p_request_id: attempt.requestId,
+      };
       const { data, error } =
-        await supabase.rpc(
-          "create_pos_transaction_for_area",
-          {
-            p_customer_name: payload.customer_name,
-            p_customer_address: payload.customer_address,
-            p_customer_phone: payload.customer_phone,
-            p_amount_received: payload.amount_received,
-            p_payment_method: payload.payment_method,
-            p_items: payload.items,
-            p_area_code: payload.area_code,
-            p_request_id: attempt.requestId,
-          }
-        );
+        "payload_version" in payload
+          ? await supabase.rpc("create_pos_transaction_for_area_v2", {
+              ...checkoutParameters,
+              p_outlet_id: payload.outlet_id,
+            })
+          : await supabase.rpc(
+              "create_pos_transaction_for_area",
+              checkoutParameters
+            );
 
       if (error) {
         setCheckoutOpen(false);
@@ -1177,6 +1186,8 @@ export default function POS() {
           if (
             currentItems.length > 0 &&
             JSON.stringify(currentItems) === JSON.stringify(payload.items) &&
+            (selectedOutlet?.id ?? null) ===
+              ("payload_version" in payload ? payload.outlet_id : null) &&
             customerName.trim() === payload.customer_name &&
             customerAddress.trim() === payload.customer_address &&
             customerPhone.trim() === payload.customer_phone &&

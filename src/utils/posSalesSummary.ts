@@ -19,6 +19,9 @@ const PESO_FORMAT = '"₱"#,##0.00';
 
 export type SalesInterval = "DAILY" | "WEEKLY" | "MONTHLY";
 export const SALES_AREAS = ["IAO", "CBR", "EFT"] as const;
+export const EFT_SUBAREAS = ["EAST", "WEST", "LANAO", "BUKIDNON", "CGY"] as const;
+export type EftSubarea = (typeof EFT_SUBAREAS)[number];
+export type EftSubareaFilter = "ALL" | EftSubarea | "UNASSIGNED";
 
 export interface SalesSummaryFilters {
   startDate: string;
@@ -26,6 +29,7 @@ export interface SalesSummaryFilters {
   area: string; // "ALL" or an area code
   outletName: string; // "ALL" or the outlet name saved on the sale
   interval: SalesInterval;
+  subarea: EftSubareaFilter;
 }
 
 export interface SalesTransaction {
@@ -33,6 +37,23 @@ export interface SalesTransaction {
   createdAt: string;
   totalCents: number;
   quantity: number;
+  areaCode: string | null;
+  eftSubareaSnapshot: EftSubarea | null;
+}
+
+export interface EftSubareaSummary {
+  subarea: EftSubarea | "UNASSIGNED";
+  count: number;
+  totalCents: number;
+}
+
+export function subareaLabel(subarea: EftSubareaFilter) {
+  if (subarea === "ALL") return "All Subareas";
+  return subarea === "UNASSIGNED" ? "Unassigned" : subarea;
+}
+
+export function eftTotalLabel(subarea: EftSubareaFilter) {
+  return subarea === "ALL" ? "EFT Total" : "Filtered EFT Total";
 }
 
 export interface SalesPeriod {
@@ -60,6 +81,8 @@ interface SalesTransactionRow {
   id: string;
   total_amount: number | string;
   created_at: string;
+  area_code: string | null;
+  eft_subarea_snapshot: string | null;
 }
 
 const labelFormatter = new Intl.DateTimeFormat("en-US", {
@@ -99,7 +122,19 @@ export function getPeriodLabel(key: string, interval: SalesInterval) {
 export function validateSalesFilters(
   filters: SalesSummaryFilters
 ): string | null {
-  return validateReportDateRange(filters.startDate, filters.endDate);
+  const dateError = validateReportDateRange(filters.startDate, filters.endDate);
+  if (dateError) return dateError;
+  if (
+    filters.subarea !== "ALL" &&
+    filters.subarea !== "UNASSIGNED" &&
+    !EFT_SUBAREAS.some((subarea) => subarea === filters.subarea)
+  ) {
+    return "Select a valid EFT subarea.";
+  }
+  if (filters.subarea !== "ALL" && filters.area !== "EFT") {
+    return "Select EFT to filter by subarea.";
+  }
+  return null;
 }
 
 function toCents(value: number | string, label: string) {
@@ -127,12 +162,17 @@ async function fetchSalesTransactions(
   for (let from = 0; ; from += TRANSACTION_PAGE_SIZE) {
     let query = supabase
       .from("pos_transactions")
-      .select("id, total_amount, created_at")
+      .select("id, total_amount, created_at, area_code, eft_subarea_snapshot")
       .eq("transaction_status", "COMPLETED")
       .gte("created_at", rangeStart)
       .lt("created_at", rangeEnd);
 
     if (filters.area !== "ALL") query = query.eq("area_code", filters.area);
+    if (filters.subarea === "UNASSIGNED") {
+      query = query.is("eft_subarea_snapshot", null);
+    } else if (filters.subarea !== "ALL") {
+      query = query.eq("eft_subarea_snapshot", filters.subarea);
+    }
     if (filters.outletName !== "ALL") {
       query = query.eq("customer_name", filters.outletName);
     }
@@ -176,12 +216,20 @@ export async function loadSalesTransactions(
     );
   }
 
-  return rows.map((row) => ({
-    id: row.id,
-    createdAt: row.created_at,
-    totalCents: toCents(row.total_amount, "total"),
-    quantity: quantityById.get(row.id) ?? 0,
-  }));
+  return rows.map((row) => {
+    const snapshot = row.eft_subarea_snapshot;
+    if (snapshot !== null && !EFT_SUBAREAS.some((code) => code === snapshot)) {
+      throw new Error("A saved POS transaction has an invalid EFT subarea snapshot.");
+    }
+    return {
+      id: row.id,
+      createdAt: row.created_at,
+      totalCents: toCents(row.total_amount, "total"),
+      quantity: quantityById.get(row.id) ?? 0,
+      areaCode: row.area_code,
+      eftSubareaSnapshot: EFT_SUBAREAS.find((code) => code === snapshot) ?? null,
+    };
+  });
 }
 
 function nextPeriodKey(key: string, interval: SalesInterval) {
@@ -272,6 +320,27 @@ export function filterPeriodsWithTransactions(periods: SalesPeriod[]) {
   return periods.filter((period) => period.count > 0);
 }
 
+export function aggregateEftSubareas(
+  transactions: SalesTransaction[],
+  selected: EftSubareaFilter
+): EftSubareaSummary[] {
+  const categories: EftSubareaSummary["subarea"][] = [...EFT_SUBAREAS, "UNASSIGNED"];
+  const summaries = categories
+    .filter((subarea) => selected === "ALL" || selected === subarea)
+    .map((subarea) => ({ subarea, count: 0, totalCents: 0 }));
+  for (const transaction of transactions) {
+    if (transaction.areaCode !== "EFT") continue;
+    const subarea = transaction.eftSubareaSnapshot ?? "UNASSIGNED";
+    const summary = summaries.find((entry) => entry.subarea === subarea);
+    if (!summary) {
+      throw new Error("A transaction does not match the selected EFT subarea.");
+    }
+    summary.count += 1;
+    summary.totalCents += transaction.totalCents;
+  }
+  return summaries;
+}
+
 const INTERVAL_LABELS: Record<SalesInterval, string> = {
   DAILY: "Daily",
   WEEKLY: "Weekly",
@@ -288,7 +357,8 @@ export function getSalesSummaryFileName(filters: SalesSummaryFilters) {
 export function buildSalesSummaryWorkbook(
   filters: SalesSummaryFilters,
   summary: SalesSummary,
-  periods: SalesPeriod[]
+  periods: SalesPeriod[],
+  subareas: EftSubareaSummary[]
 ): XLSX.WorkBook {
   const summarySheet = XLSX.utils.aoa_to_sheet([
     ["Metric", "Value"],
@@ -303,6 +373,11 @@ export function buildSalesSummaryWorkbook(
     ["Total Items Sold", summary.quantity],
   ]);
   for (const address of ["B7", "B9"]) summarySheet[address].z = PESO_FORMAT;
+  if (filters.area === "EFT") {
+    XLSX.utils.sheet_add_aoa(summarySheet, [
+      ["EFT Subarea", subareaLabel(filters.subarea)],
+    ], { origin: -1 });
+  }
   summarySheet["!cols"] = [{ wch: 30 }, { wch: 24 }];
 
   const breakdownRows = periods.map((period) => [
@@ -338,16 +413,38 @@ export function buildSalesSummaryWorkbook(
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, summarySheet, "Summary");
   XLSX.utils.book_append_sheet(workbook, breakdownSheet, "Breakdown");
+  if (filters.area === "ALL" || filters.area === "EFT") {
+    const subareaRows = subareas.map((entry) => [
+      subareaLabel(entry.subarea),
+      entry.totalCents / 100,
+      entry.count,
+    ]);
+    const subareaSheet = XLSX.utils.aoa_to_sheet([
+      ["EFT Subarea", "Total Sales", "Transaction Count"],
+      ...subareaRows,
+      [
+        eftTotalLabel(filters.subarea),
+        subareas.reduce((total, entry) => total + entry.totalCents, 0) / 100,
+        subareas.reduce((total, entry) => total + entry.count, 0),
+      ],
+    ]);
+    for (let row = 2; row <= subareaRows.length + 2; row += 1) {
+      subareaSheet[`B${row}`].z = PESO_FORMAT;
+    }
+    subareaSheet["!cols"] = [{ wch: 20 }, { wch: 16 }, { wch: 20 }];
+    XLSX.utils.book_append_sheet(workbook, subareaSheet, "EFT Subareas");
+  }
   return workbook;
 }
 
 export function downloadSalesSummary(
   filters: SalesSummaryFilters,
   summary: SalesSummary,
-  periods: SalesPeriod[]
+  periods: SalesPeriod[],
+  subareas: EftSubareaSummary[]
 ) {
   XLSX.writeFile(
-    buildSalesSummaryWorkbook(filters, summary, periods),
+    buildSalesSummaryWorkbook(filters, summary, periods, subareas),
     getSalesSummaryFileName(filters)
   );
 }
