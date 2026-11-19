@@ -147,3 +147,31 @@ test("v1 cancellation retries remain valid", (t) => {
 
   assert.equal(readCancellationAttempt(userId, 1_000).status, "valid");
 });
+
+test("POS transaction inserts reject inactive outlets without restricting area", async () => {
+  const migration = await readFile(
+    new URL(
+      "../supabase/migrations/20261119123000_reject_inactive_pos_transaction_outlets.sql",
+      import.meta.url
+    ),
+    "utf8"
+  );
+
+  assert.match(
+    migration,
+    /CREATE TRIGGER pos_transactions_require_active_outlet\s+BEFORE INSERT ON public\.pos_transactions/i
+  );
+  assert.match(
+    migration,
+    /IF NEW\.outlet_id IS NULL THEN\s+RETURN NEW;/i
+  );
+  assert.match(
+    migration,
+    /SELECT o\.status[\s\S]*?WHERE o\.id = NEW\.outlet_id[\s\S]*?FOR SHARE;/i
+  );
+  assert.match(
+    migration,
+    /IF v_outlet_status IS DISTINCT FROM 'Active' THEN[\s\S]*?RAISE EXCEPTION 'Selected outlet is inactive:/i
+  );
+  assert.doesNotMatch(migration, /area_code/i);
+});
