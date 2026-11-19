@@ -65,7 +65,7 @@ function formatLockoutCountdown(remainingMs: number) {
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
 
-export default function Login() {
+export default function Login({ maintenance = false }: { maintenance?: boolean }) {
   const navigate = useNavigate();
 
   const [username, setUsername] =
@@ -88,6 +88,10 @@ export default function Login() {
 
   useEffect(() => {
     async function redirectAuthenticatedUser() {
+      if (maintenance) {
+        setCheckingSession(false);
+        return;
+      }
       const {
         data: { session },
       } = await supabase.auth.getSession();
@@ -103,7 +107,7 @@ export default function Login() {
     }
 
     void redirectAuthenticatedUser();
-  }, [navigate]);
+  }, [maintenance, navigate]);
 
   useEffect(() => {
     const trimmedUsername = username.trim();
@@ -230,7 +234,7 @@ export default function Login() {
     }
 
     resetFailedLoginAttempts(trimmedUsername);
-    navigate("/system");
+    navigate(maintenance ? "/admin/maintenance" : "/system");
   }
 
   function registerFailedLoginAttempt(username: string) {
@@ -379,7 +383,7 @@ export default function Login() {
             </h2>
 
             <p className="mt-2 text-center text-sm text-slate-500">
-              Sign in to continue to Eclipse.
+              {maintenance ? "Sign in with an active administrator account." : "Sign in to continue to Eclipse."}
             </p>
 
             {error && (

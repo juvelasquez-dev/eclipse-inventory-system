@@ -366,6 +366,7 @@ export default function POS() {
     void loadCheckoutRecovery();
     return () => {
       active = false;
+      checkoutUserIdRef.current = null;
       authListener.subscription.unsubscribe();
     };
   }, []);
@@ -1143,11 +1144,26 @@ export default function POS() {
       }
       const transactionResult = data;
       const receiptNumber = transactionResult.display_receipt_number;
+      if (checkoutUserIdRef.current !== attempt.userId) return;
       void refreshInventory({ invalidate: true });
+      let savedReceiptData: Partial<ReceiptData> = {};
+      let savedReceiptIssue: string | null = null;
+      if (!isRecovery) {
+        try {
+          savedReceiptData = await loadSavedReceiptData(
+            transactionResult.transaction_id,
+            products
+          );
+        } catch (error) {
+          console.error("Unable to reload completed POS receipt data:", error);
+          savedReceiptIssue =
+            "Saved receipt details could not be reloaded. Use POS History to print the A5 receipt.";
+        }
+      }
+      if (checkoutUserIdRef.current !== attempt.userId) return;
       const cleared = clearSessionAttempt(
         checkoutRetryStorageKey(attempt.userId)
       );
-      if (checkoutUserIdRef.current !== attempt.userId) return;
       if (cleared) {
         setCheckoutRecovery({ status: "missing" });
         setConfirmCheckoutDiscard(false);
@@ -1212,19 +1228,6 @@ export default function POS() {
       const receiptItems = [
         ...cart,
       ];
-      let savedReceiptData: Partial<ReceiptData> = {};
-      let savedReceiptIssue: string | null = null;
-      try {
-        savedReceiptData = await loadSavedReceiptData(
-          transactionResult.transaction_id,
-          products
-        );
-      } catch (error) {
-        console.error("Unable to reload completed POS receipt data:", error);
-        savedReceiptIssue =
-          "Saved receipt details could not be reloaded. Use POS History to print the A5 receipt.";
-      }
-
       clearCart();
 
       setCheckoutOpen(false);

@@ -1,5 +1,6 @@
 import {
   BrowserRouter,
+  Navigate,
   Routes,
   Route,
 } from "react-router-dom";
@@ -9,6 +10,7 @@ import MainLayout from "./components/layout/MainLayout";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 import RequireAdmin from "./components/auth/RequireAdmin";
 import RequireIAO from "./components/auth/RequireIAO";
+import MaintenanceGate from "./components/maintenance/MaintenanceGate";
 
 import Login from "./pages/Login/Login";
 import System from "./pages/System/System";
@@ -17,6 +19,7 @@ import UserManagement from "./pages/Admin/UserManagement";
 import AuditLogs from "./pages/Admin/AuditLogs";
 import ChangePassword from "./pages/Admin/ChangePassword";
 import SecuritySessionInfo from "./pages/Admin/SecuritySessionInfo";
+import SystemMaintenance from "./pages/Admin/SystemMaintenance";
 import POS from "./pages/POS/POS";
 import POSHistory from "./pages/POS/POSHistory";
 import POSReports from "./pages/POS/Reports";
@@ -40,6 +43,7 @@ import { InventoryProvider } from "./context/InventoryContext";
 
 function App() {
   return (
+    <MaintenanceGate>
     <InventoryProvider>
       <ToastProvider>
         <BrowserRouter>
@@ -49,6 +53,10 @@ function App() {
             <Route
               path="/login"
               element={<Login />}
+            />
+            <Route
+              path="/maintenance/login"
+              element={<Navigate to="/login" replace />}
             />
 
             {/* Protected Application */}
@@ -85,6 +93,11 @@ function App() {
                 <Route
                   path="/admin/security"
                   element={<SecuritySessionInfo />}
+                />
+
+                <Route
+                  path="/admin/maintenance"
+                  element={<SystemMaintenance />}
                 />
               </Route>
 
@@ -193,6 +206,7 @@ function App() {
         </BrowserRouter>
       </ToastProvider>
     </InventoryProvider>
+    </MaintenanceGate>
   );
 }
 
