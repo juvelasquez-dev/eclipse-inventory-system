@@ -27,7 +27,8 @@ export interface SalesSummaryFilters {
   startDate: string;
   endDate: string;
   area: string; // "ALL" or an area code
-  outletName: string; // "ALL" or the outlet name saved on the sale
+  outletId: string; // "ALL" or a UUID
+  outletLabel: string;
   interval: SalesInterval;
   subarea: EftSubareaFilter;
 }
@@ -82,8 +83,12 @@ interface SalesTransactionRow {
   total_amount: number | string;
   created_at: string;
   area_code: string | null;
+  outlet_id: string | null;
   eft_subarea_snapshot: string | null;
 }
+
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const labelFormatter = new Intl.DateTimeFormat("en-US", {
   timeZone: "UTC",
@@ -134,6 +139,9 @@ export function validateSalesFilters(
   if (filters.subarea !== "ALL" && filters.area !== "EFT") {
     return "Select EFT to filter by subarea.";
   }
+  if (filters.outletId !== "ALL" && !UUID_PATTERN.test(filters.outletId)) {
+    return "Select a valid outlet.";
+  }
   return null;
 }
 
@@ -162,7 +170,9 @@ async function fetchSalesTransactions(
   for (let from = 0; ; from += TRANSACTION_PAGE_SIZE) {
     let query = supabase
       .from("pos_transactions")
-      .select("id, total_amount, created_at, area_code, eft_subarea_snapshot")
+      .select(
+        "id, total_amount, created_at, area_code, outlet_id, eft_subarea_snapshot"
+      )
       .eq("transaction_status", "COMPLETED")
       .gte("created_at", rangeStart)
       .lt("created_at", rangeEnd);
@@ -173,8 +183,8 @@ async function fetchSalesTransactions(
     } else if (filters.subarea !== "ALL") {
       query = query.eq("eft_subarea_snapshot", filters.subarea);
     }
-    if (filters.outletName !== "ALL") {
-      query = query.eq("customer_name", filters.outletName);
+    if (filters.outletId !== "ALL") {
+      query = query.eq("outlet_id", filters.outletId);
     }
 
     const { data, error } = await query
@@ -365,7 +375,10 @@ export function buildSalesSummaryWorkbook(
     ["Start Date", filters.startDate],
     ["End Date", filters.endDate],
     ["Area", filters.area === "ALL" ? "All" : filters.area],
-    ["Outlet", filters.outletName === "ALL" ? "All" : filters.outletName],
+    [
+      "Outlet",
+      filters.outletLabel === "ALL" ? "All" : filters.outletLabel,
+    ],
     ["Grouping", INTERVAL_LABELS[filters.interval]],
     ["Total Sales", summary.totalCents / 100],
     ["Completed Transaction Count", summary.count],

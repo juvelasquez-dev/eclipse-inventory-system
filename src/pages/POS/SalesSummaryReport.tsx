@@ -40,7 +40,8 @@ function getDefaultFilters(): SalesSummaryFilters {
     startDate: businessMonthStartKey(today),
     endDate: today,
     area: "ALL",
-    outletName: "ALL",
+    outletId: "ALL",
+    outletLabel: "ALL",
     interval: "DAILY",
     subarea: "ALL",
   };
@@ -109,18 +110,22 @@ export default function SalesSummaryReport() {
   }, [load]);
 
   const outletOptions = useMemo(() => {
-    const names = Array.from(
-      new Set(
-        outlets
-          .filter(
-            (outlet) => draft.area === "ALL" || outlet.areaCode === draft.area
-          )
-          .map((outlet) => outlet.outletName)
-      )
-    ).sort((a, b) => a.localeCompare(b));
     return [
       { label: "All outlets", value: "ALL" },
-      ...names.map((name) => ({ label: name, value: name })),
+      ...outlets
+        .filter(
+          (outlet) => draft.area === "ALL" || outlet.areaCode === draft.area
+        )
+        .sort(
+          (left, right) =>
+            left.outletName.localeCompare(right.outletName) ||
+            left.completeAddress.localeCompare(right.completeAddress) ||
+            left.id.localeCompare(right.id)
+        )
+        .map((outlet) => ({
+          label: `${outlet.outletName} — ${outlet.completeAddress}`,
+          value: outlet.id,
+        })),
     ];
   }, [outlets, draft.area]);
 
@@ -208,7 +213,7 @@ export default function SalesSummaryReport() {
           <p className="mt-1 text-sm text-slate-500">
             Active range: {applied.startDate} to {applied.endDate} (Asia/Manila)
             · {applied.area === "ALL" ? "All areas" : applied.area} ·{" "}
-            {applied.outletName === "ALL" ? "All outlets" : applied.outletName}
+            {applied.outletId === "ALL" ? "All outlets" : applied.outletLabel}
             {applied.area === "EFT" ? ` · ${subareaLabel(applied.subarea)}` : ""}.
             Completed sales only.
           </p>
@@ -246,7 +251,8 @@ export default function SalesSummaryReport() {
             setDraft((current) => ({
               ...current,
               area: event.target.value,
-              outletName: "ALL",
+              outletId: "ALL",
+              outletLabel: "ALL",
               subarea: "ALL",
             }))
           }
@@ -278,8 +284,23 @@ export default function SalesSummaryReport() {
         <Select
           id="sales-outlet"
           label="Outlet"
-          value={draft.outletName}
-          onChange={(event) => update("outletName", event.target.value)}
+          value={draft.outletId}
+          onChange={(event) => {
+            const outletId = event.target.value;
+            const selectedOutlet = outlets.find(
+              (outlet) => outlet.id === outletId
+            );
+            setDraft((current) => ({
+              ...current,
+              outletId,
+              outletLabel:
+                outletId === "ALL"
+                  ? "ALL"
+                  : selectedOutlet
+                    ? `${selectedOutlet.outletName} — ${selectedOutlet.completeAddress}`
+                    : "",
+            }));
+          }}
           options={outletOptions}
         />
         <Select

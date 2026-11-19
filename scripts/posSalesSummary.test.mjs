@@ -7,27 +7,34 @@ import ts from "typescript";
 
 const require = createRequire(import.meta.url);
 const XLSX = require("xlsx");
+const sharedOutletIdA = "1c9a0351-b784-4f41-9b26-c15036aa98e7";
+const sharedOutletIdB = "2c9a0351-b784-4f41-9b26-c15036aa98e8";
 const rows = [
-  ["east", "EFT", "EAST", "2026-01-31T15:59:59Z", 10],
-  ["west", "EFT", "WEST", "2026-01-31T16:00:00Z", 20],
-  ["lanao", "EFT", "LANAO", "2026-02-01T04:00:00Z", 30],
-  ["bukidnon", "EFT", "BUKIDNON", "2026-02-02T04:00:00Z", 40],
-  ["cgy", "EFT", "CGY", "2026-02-02T05:00:00Z", 50],
-  ["legacy", "EFT", null, "2026-02-02T06:00:00Z", 60],
-  ["iao", "IAO", null, "2026-02-02T07:00:00Z", 70],
-  ["cbr", "CBR", null, "2026-02-02T08:00:00Z", 80],
-  ["cancelled", "EFT", "EAST", "2026-02-02T09:00:00Z", 90],
-].map(([id, area_code, eft_subarea_snapshot, created_at, total_amount]) => ({
+  ["east", "EFT", "EAST", "2026-01-31T15:59:59Z", 10, sharedOutletIdA],
+  ["west", "EFT", "WEST", "2026-01-31T16:00:00Z", 20, sharedOutletIdB],
+  ["lanao", "EFT", "LANAO", "2026-02-01T04:00:00Z", 30, null],
+  ["bukidnon", "EFT", "BUKIDNON", "2026-02-02T04:00:00Z", 40, null],
+  ["cgy", "EFT", "CGY", "2026-02-02T05:00:00Z", 50, null],
+  ["legacy", "EFT", null, "2026-02-02T06:00:00Z", 60, null],
+  ["iao", "IAO", null, "2026-02-02T07:00:00Z", 70, null],
+  ["cbr", "CBR", null, "2026-02-02T08:00:00Z", 80, null],
+  ["cancelled", "EFT", "EAST", "2026-02-02T09:00:00Z", 90, sharedOutletIdA],
+].map(([id, area_code, eft_subarea_snapshot, created_at, total_amount, outlet_id]) => ({
   id,
   area_code,
   eft_subarea_snapshot,
+  outlet_id,
   created_at,
   total_amount,
   transaction_status: id === "cancelled" ? "CANCELLED" : "COMPLETED",
-  customer_name: id === "west" || id === "legacy" ? "Shared outlet" : id,
+  customer_name:
+    id === "east" || id === "west" || id === "legacy"
+      ? "Shared outlet"
+      : id,
 }));
 
 const selects = [];
+const equalityCalls = [];
 const supabase = {
   from(table) {
     assert.equal(table, "pos_transactions");
@@ -40,6 +47,7 @@ const supabase = {
         return this;
       },
       eq(field, value) {
+        equalityCalls.push([field, value]);
         predicates.push((row) => row[field] === value);
         return this;
       },
@@ -124,15 +132,18 @@ const filters = {
   startDate: "2026-01-31",
   endDate: "2026-02-02",
   area: "EFT",
-  outletName: "ALL",
+  outletId: "ALL",
+  outletLabel: "ALL",
   interval: "DAILY",
   subarea: "ALL",
 };
 
 test("filters by saved EFT snapshots, including historical unassigned sales", async () => {
+  equalityCalls.length = 0;
   const all = await sales.loadSalesTransactions(filters);
   assert.deepEqual(all.map((row) => row.id), ["east", "west", "lanao", "bukidnon", "cgy", "legacy"]);
-  assert.match(selects.at(-1), /area_code, eft_subarea_snapshot/);
+  assert.match(selects.at(-1), /area_code, outlet_id, eft_subarea_snapshot/);
+  assert.ok(all.some((row) => row.id === "legacy"));
   for (const [subarea, id] of [
     ["EAST", "east"], ["WEST", "west"], ["LANAO", "lanao"],
     ["BUKIDNON", "bukidnon"], ["CGY", "cgy"], ["UNASSIGNED", "legacy"],
@@ -151,11 +162,43 @@ test("filters by saved EFT snapshots, including historical unassigned sales", as
   );
 });
 
-test("preserves date, outlet, completed status and non-EFT area filtering", async () => {
-  const february = await sales.loadSalesTransactions({
-    ...filters, startDate: "2026-02-01", outletName: "Shared outlet",
+test("filters same-named outlets by ID and excludes unassigned legacy sales", async () => {
+  equalityCalls.length = 0;
+  const firstOutlet = await sales.loadSalesTransactions({
+    ...filters,
+    outletId: sharedOutletIdA,
+    outletLabel: "Shared outlet — East address",
   });
-  assert.deepEqual(february.map((row) => row.id), ["west", "legacy"]);
+  assert.deepEqual(firstOutlet.map((row) => row.id), ["east"]);
+  assert.ok(equalityCalls.some(([field, value]) => field === "outlet_id" && value === sharedOutletIdA));
+
+  equalityCalls.length = 0;
+  const secondOutlet = await sales.loadSalesTransactions({
+    ...filters,
+    outletId: sharedOutletIdB,
+    outletLabel: "Shared outlet — West address",
+  });
+  assert.deepEqual(secondOutlet.map((row) => row.id), ["west"]);
+  assert.ok(equalityCalls.some(([field, value]) => field === "outlet_id" && value === sharedOutletIdB));
+  assert.ok(!secondOutlet.some((row) => row.id === "legacy"));
+
+  await assert.rejects(
+    sales.loadSalesTransactions({ ...filters, outletId: "Shared outlet" }),
+    /valid outlet/
+  );
+});
+
+test("preserves date, completed status and non-EFT area filtering", async () => {
+  const february = await sales.loadSalesTransactions({
+    ...filters, startDate: "2026-02-01", outletId: sharedOutletIdB,
+  });
+  assert.deepEqual(february.map((row) => row.id), ["west"]);
+  const allOutlets = await sales.loadSalesTransactions({
+    ...filters,
+    startDate: "2026-02-01",
+  });
+  assert.deepEqual(allOutlets.map((row) => row.id), ["west", "lanao", "bukidnon", "cgy", "legacy"]);
+  assert.ok(allOutlets.some((row) => row.id === "legacy"));
   const iao = await sales.loadSalesTransactions({ ...filters, area: "IAO" });
   const cbr = await sales.loadSalesTransactions({ ...filters, area: "CBR" });
   assert.deepEqual(iao.map((row) => row.id), ["iao"]);
