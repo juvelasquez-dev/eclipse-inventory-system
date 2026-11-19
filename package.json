@@ -1,3 +1,4 @@
+
 {
   "name": "inventory-management-app",
   "private": true,
@@ -8,7 +9,7 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "node --test scripts/productDuplicate.test.mjs scripts/posRetryRecovery.test.mjs scripts/posTransactionReport.test.mjs scripts/posSalesSummary.test.mjs scripts/outletForm.test.mjs",
+    "test": "node --test scripts/productDuplicate.test.mjs scripts/maintenance.test.mjs scripts/posRetryRecovery.test.mjs scripts/posTransactionReport.test.mjs scripts/posSalesSummary.test.mjs scripts/outletForm.test.mjs",
     "system-check": "node scripts/system-check.mjs"
   },
   "dependencies": {

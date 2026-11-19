@@ -431,8 +431,10 @@ export default function POSHistory() {
   }, [receipt, printFormat, printRequested, showToast]);
 
   useEffect(() => {
+    let active = true;
     const { data: authListener } = supabase.auth.onAuthStateChange(
       (_event, session) => {
+        if (!active) return;
         const userId = session?.user.id ?? null;
         cancellationAuthEventVersion.current += 1;
         setHistoryLoadTrigger((version) => version + 1);
@@ -445,7 +447,11 @@ export default function POSHistory() {
         );
       }
     );
-    return () => authListener.subscription.unsubscribe();
+    return () => {
+      active = false;
+      cancellationUserIdRef.current = null;
+      authListener.subscription.unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
@@ -1032,10 +1038,10 @@ export default function POSHistory() {
         return;
       }
 
+      if (cancellationUserIdRef.current !== attempt.userId) return;
       const cleared = clearSessionAttempt(
         cancellationRetryStorageKey(attempt.userId)
       );
-      if (cancellationUserIdRef.current !== attempt.userId) return;
       if (cleared) {
         setCancellationRecovery({ status: "missing" });
         setConfirmCancellationDiscard(false);

@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, ArrowRight, KeyRound, ScrollText, ShieldCheck, Users } from "lucide-react";
+import { ArrowLeft, ArrowRight, KeyRound, ScrollText, ShieldCheck, Users, Wrench } from "lucide-react";
 
 export default function Admin() {
   const navigate = useNavigate();
@@ -31,6 +31,15 @@ export default function Admin() {
         </p>
 
         <div className="mt-10 grid w-full max-w-3xl grid-cols-1 gap-6 sm:grid-cols-2">
+          <button
+            type="button"
+            onClick={() => navigate("/admin/maintenance")}
+            className="rounded-3xl border border-indigo-100 bg-white p-8 text-left shadow-sm transition hover:border-indigo-300 hover:shadow-xl"
+          >
+            <Wrench className="h-8 w-8 text-indigo-600" />
+            <h2 className="mt-5 text-xl font-bold text-slate-900">System Maintenance</h2>
+            <p className="mt-2 text-sm text-slate-500">Control maintenance status and the public announcement.</p>
+          </button>
           <button
             type="button"
             onClick={() => navigate("/admin/users")}

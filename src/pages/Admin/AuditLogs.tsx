@@ -23,6 +23,9 @@ const ACTION_OPTIONS = [
   { label: "User Created", value: "USER_CREATED" },
   { label: "Username Changed", value: "USERNAME_CHANGED" },
   { label: "Password Reset by Admin", value: "PASSWORD_RESET_BY_ADMIN" },
+  { label: "Maintenance Enabled", value: "MAINTENANCE_ENABLED" },
+  { label: "Maintenance Disabled", value: "MAINTENANCE_DISABLED" },
+  { label: "Maintenance Updated", value: "MAINTENANCE_UPDATED" },
 ];
 
 /*

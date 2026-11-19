@@ -53,6 +53,7 @@ https://eclipse-inventory-system.vercel.app
 * System administration
 * User account management
 * Supabase Auth integration
+* Administrator-controlled system maintenance mode
 
 ### 📊 Reports & Data
 
@@ -177,6 +178,23 @@ These operations provide server-side validation for operations such as:
 * Stock operations
 
 > Security configuration and database policies are subject to ongoing review and hardening.
+
+### System maintenance
+
+After the maintenance migration is applied, active administrators can open
+**Administration > System Maintenance** to edit the public announcement
+(up to 500 characters), set an optional expected return in Asia/Manila time,
+and enable or disable maintenance. The expected time does not disable it
+automatically. Changes are recorded in Audit Logs. During maintenance, use
+**Administrator access** on the maintenance screen to sign in and disable it.
+
+The frontend checks status every 30 seconds and on focus. If it cannot verify
+status, it blocks access and offers a retry. Allow in-flight checkouts to finish
+before enabling maintenance; pending POS retry information is not cleared.
+This is a frontend access gate, not a database write lock: direct API calls,
+stale clients, and in-flight requests remain subject to existing backend
+permissions. If Supabase is unavailable, the in-app control may also be
+unavailable; maintain an authorized out-of-band recovery procedure.
 
 ---
 
