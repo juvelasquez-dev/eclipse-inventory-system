@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import Button from "../../components/ui/Button";
@@ -266,6 +266,12 @@ export default function POS() {
     useState("CASH");
   const [saleAreaCode, setSaleAreaCode] =
     useState("");
+  const updateSaleAreaCode = useCallback((areaCode: string) => {
+    setSaleAreaCode(areaCode);
+    setSelectedOutlet((outlet) =>
+      outlet && outlet.areaCode !== areaCode ? null : outlet
+    );
+  }, []);
   const [checkoutUserId, setCheckoutUserId] =
     useState<string | null>(null);
   const checkoutUserIdRef = useRef<string | null>(null);
@@ -313,14 +319,14 @@ export default function POS() {
         return;
       }
       if (data === "IAO" || data === "CBR" || data === "EFT") {
-        setSaleAreaCode(data);
+        updateSaleAreaCode(data);
       }
     }
     void loadAssignedArea();
     return () => {
       active = false;
     };
-  }, []);
+  }, [updateSaleAreaCode]);
 
   useEffect(() => {
     let active = true;
@@ -2373,7 +2379,7 @@ export default function POS() {
               <Select
                 label="Receipt area"
                 value={saleAreaCode}
-                onChange={(event) => setSaleAreaCode(event.target.value)}
+                onChange={(event) => updateSaleAreaCode(event.target.value)}
                 disabled={isSubmitting}
                 options={[
                   { label: "Select POS area", value: "" },
@@ -2394,6 +2400,7 @@ export default function POS() {
                 <div className="mt-3">
                   <CustomerOutletSearch
                     outlets={outlets}
+                    saleAreaCode={saleAreaCode}
                     customerName={customerName}
                     customerAddress={customerAddress}
                     customerPhone={customerPhone}

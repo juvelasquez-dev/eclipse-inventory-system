@@ -4,6 +4,7 @@ import type { Outlet } from "../../types/inventory";
 
 interface CustomerOutletSearchProps {
   outlets: Outlet[];
+  saleAreaCode: string;
   customerName: string;
   customerAddress: string;
   customerPhone: string;
@@ -18,6 +19,7 @@ interface CustomerOutletSearchProps {
 
 export default function CustomerOutletSearch({
   outlets,
+  saleAreaCode,
   customerName,
   customerAddress,
   customerPhone,
@@ -60,7 +62,7 @@ export default function CustomerOutletSearch({
       .filter((outlet) => {
         const status = String(outlet.status ?? "").trim().toLowerCase();
 
-        if (status !== "active") {
+        if (status !== "active" || !saleAreaCode || outlet.areaCode !== saleAreaCode) {
           return false;
         }
 
@@ -76,7 +78,7 @@ export default function CustomerOutletSearch({
         return nameMatch || contactMatch || addressMatch || degicMatch;
       })
       .slice(0, 8);
-  }, [customerName, outlets, selectedOutlet]);
+  }, [customerName, outlets, saleAreaCode, selectedOutlet]);
 
   function handleInputChange(value: string) {
     onCustomerNameChange(value);
